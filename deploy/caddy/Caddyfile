@@ -1,0 +1,46 @@
+{
+	email {$ACME_EMAIL}
+	servers {
+		# No trusted_proxies: Caddy is the edge, so it discards any
+		# client-supplied X-Forwarded-For and sends the real peer address.
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+	}
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		-Server
+		-X-Powered-By
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$STOREFRONT_DOMAIN} {
+	import common
+	reverse_proxy storefront:3000
+}
+
+www.{$STOREFRONT_DOMAIN} {
+	redir https://{$STOREFRONT_DOMAIN}{uri} permanent
+}
+
+{$ADMIN_DOMAIN} {
+	import common
+	reverse_proxy admin:3000
+}
+
+{$API_DOMAIN} {
+	import common
+	request_body {
+		max_size 12MB
+	}
+	reverse_proxy api:8080
+}

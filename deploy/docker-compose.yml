@@ -1,0 +1,143 @@
+# Production stack for a single host: Caddy (TLS) → storefront/admin/api → MongoDB.
+# Usage: see deploy/README.md. All secrets come from deploy/.env and deploy/secrets/ (never committed).
+name: atcreations
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  caddy:
+    <<: *hardening
+    image: caddy:2.10-alpine
+    cap_add: ["NET_BIND_SERVICE"]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN:?}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?}
+      API_DOMAIN: ${API_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs: ["/tmp"]
+    networks:
+      edge: { ipv4_address: 172.30.0.10 }
+    depends_on: [api, storefront, admin]
+
+  api:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/atcreations}/atcreations-api:${TAG:-latest}
+    build: { context: ../apps/api }
+    env_file: [./env/api.env]
+    environment:
+      APP_ENV: production
+      HTTP_ADDR: ":8080"
+      # Only Caddy and the storefront (which forwards visitor IPs for SSR calls)
+      # may set X-Forwarded-For. Never trust the whole subnet: it includes the
+      # Docker gateway, which fronts IPv6 visitors when the userland proxy is used.
+      TRUSTED_PROXIES: 172.30.0.10/32,172.30.0.11/32
+      GOMEMLIMIT: 400MiB
+    tmpfs: ["/tmp:size=64m"] # multipart uploads spill here
+    mem_limit: 512m
+    networks: [edge, data]
+    depends_on:
+      mongo: { condition: service_healthy }
+
+  storefront:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/atcreations}/atcreations-storefront:${TAG:-latest}
+    build: { context: .., dockerfile: apps/storefront/Dockerfile }
+    env_file: [./env/storefront.env]
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      PORT: "3000"
+      ORIGIN: https://${STOREFRONT_DOMAIN}
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: "1"
+    tmpfs: ["/tmp"]
+    mem_limit: 384m
+    networks:
+      edge: { ipv4_address: 172.30.0.11 }
+    depends_on: [api]
+
+  admin:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/atcreations}/atcreations-admin:${TAG:-latest}
+    build: { context: .., dockerfile: apps/admin/Dockerfile }
+    env_file: [./env/admin.env]
+    environment:
+      PORT: "3000"
+      ORIGIN: https://${ADMIN_DOMAIN}
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: "1"
+    tmpfs: ["/tmp"]
+    mem_limit: 384m
+    networks: [edge]
+
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    # The keyfile is required for auth on a replica set; it must be owned by
+    # the mongodb user with 0400 permissions, so it is installed at start.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        install -m 0400 -o 999 -g 999 /run/secrets/mongo_keyfile /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile --wiredTigerCacheSizeGB 0.5
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongo_root_password
+      MONGO_APP_DB: atcreations
+    secrets: [mongo_keyfile, mongo_root_password, mongo_app_password]
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+      - ./mongo/init:/docker-entrypoint-initdb.d:ro
+      - ../backups:/backups
+    healthcheck:
+      # Initiates the single-node replica set on first boot, then reports health.
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u root -p "$$(cat /run/secrets/mongo_root_password)" --authenticationDatabase admin --eval
+          "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}).ok }"
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    # No published ports: MongoDB is reachable only from the internal data network.
+    networks: [data]
+
+networks:
+  edge:
+    ipam:
+      config: [{ subnet: 172.30.0.0/24 }]
+  data:
+    internal: true # no route to the internet
+
+volumes:
+  caddy_data:
+  caddy_config:
+  mongo_data:
+  mongo_config:
+
+secrets:
+  mongo_keyfile:
+    file: ./secrets/mongo_keyfile
+  mongo_root_password:
+    file: ./secrets/mongo_root_password
+  mongo_app_password:
+    file: ./secrets/mongo_app_password

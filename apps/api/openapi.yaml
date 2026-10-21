@@ -1,0 +1,912 @@
+openapi: 3.1.0
+info:
+  title: AT Creations API
+  version: 1.0.0
+  description: |
+    Public catalogue API for the storefront and authenticated management API for the admin dashboard.
+
+    * Public endpoints (`/v1/...`) need no credentials and never use cookies.
+    * Admin endpoints (`/v1/admin/...`) require a Clerk session token in `Authorization: Bearer <token>`.
+      Roles come from the Clerk user's `publicMetadata.role` (`staff`, `manager`, `admin`).
+    * Success bodies are `{ "data": ..., "meta": ... }`. Errors are RFC 9457 `application/problem+json`.
+    * Money is integer cents (CAD). Localized text is `{ "en": "...", "vi": "..." }`.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: public
+  - name: admin
+
+components:
+  securitySchemes:
+    clerk:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Clerk session token (from `getToken()`), verified against Clerk JWKS.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 24 }
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ObjectID' }
+
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    ObjectID:
+      type: string
+      pattern: '^[a-f0-9]{24}$'
+
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string, example: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        requestId: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    LocalizedText:
+      type: object
+      required: [en]
+      properties:
+        en: { type: string }
+        vi: { type: string }
+
+    Image:
+      type: object
+      required: [id, key, url, width, height]
+      properties:
+        id: { type: string }
+        key: { type: string, description: Object key in the bucket }
+        url: { type: string, format: uri, description: Public CDN URL }
+        width: { type: integer }
+        height: { type: integer }
+        alt: { $ref: '#/components/schemas/LocalizedText' }
+
+    CategoryRef:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        slug: { type: string }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+
+    Category:
+      type: object
+      required: [id, slug, name, description, sortOrder, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        slug: { type: string }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        description: { $ref: '#/components/schemas/LocalizedText' }
+        image:
+          oneOf: [{ $ref: '#/components/schemas/Image' }, { type: 'null' }]
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CategoryInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 80, description: Generated from name.en when omitted }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        description: { $ref: '#/components/schemas/LocalizedText' }
+        sortOrder: { type: integer, minimum: 0, maximum: 10000 }
+
+    ProductStatus:
+      type: string
+      enum: [draft, published, archived]
+
+    Product:
+      type: object
+      required: [id, slug, status, name, description, priceCents, finalPriceCents, currency, discountPercent, stock, featured, categoryIds, categories, images, views, version, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        slug: { type: string }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        description: { $ref: '#/components/schemas/LocalizedText' }
+        priceCents:
+          type: [integer, 'null']
+          description: null means "contact for price"
+        finalPriceCents:
+          type: [integer, 'null']
+          description: priceCents after discountPercent, rounded half-up
+        currency: { type: string, enum: [CAD] }
+        discountPercent: { type: integer, minimum: 0, maximum: 90 }
+        stock: { type: integer, minimum: 0 }
+        featured: { type: boolean }
+        categoryIds: { type: array, items: { $ref: '#/components/schemas/ObjectID' } }
+        categories: { type: array, items: { $ref: '#/components/schemas/CategoryRef' } }
+        images:
+          type: array
+          description: Ordered; the first image is the cover.
+          items: { $ref: '#/components/schemas/Image' }
+        views: { type: integer }
+        version:
+          type: integer
+          description: Increments on every field edit and stock change. Send it back on PUT for optimistic concurrency.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ProductInput:
+      type: object
+      additionalProperties: false
+      required: [name, status]
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 120 }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        description: { $ref: '#/components/schemas/LocalizedText' }
+        priceCents: { type: [integer, 'null'], minimum: 0, maximum: 100000000 }
+        discountPercent: { type: integer, minimum: 0, maximum: 90 }
+        stock: { type: integer, minimum: 0, maximum: 1000000 }
+        featured: { type: boolean }
+        categoryIds: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/ObjectID' } }
+        version:
+          type: integer
+          description: Required on PUT — the version the client loaded. A mismatch (concurrent edit or stock change from an order) returns 409.
+
+    BusinessHours:
+      type: object
+      required: [day, closed]
+      properties:
+        day: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+        closed: { type: boolean }
+        open: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        close: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+
+    StoreInfo:
+      type: object
+      required: [email, phone, address, businessHours, updatedAt]
+      properties:
+        email: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        mapUrl: { type: string, format: uri }
+        businessHours: { type: array, items: { $ref: '#/components/schemas/BusinessHours' } }
+        updatedAt: { type: string, format: date-time }
+
+    StoreInfoInput:
+      type: object
+      additionalProperties: false
+      required: [businessHours]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 40 }
+        address: { type: string, maxLength: 300 }
+        mapUrl: { type: string, format: uri, maxLength: 500 }
+        businessHours: { type: array, maxItems: 7, items: { $ref: '#/components/schemas/BusinessHours' } }
+
+    OrderStatus:
+      type: string
+      enum: [pending, confirmed, processing, shipped, delivered, completed, cancelled, refunded]
+      description: |
+        Allowed transitions: pending→confirmed|cancelled, confirmed→processing|cancelled,
+        processing→shipped|cancelled, shipped→delivered, delivered→completed|refunded, completed→refunded.
+        Cancelling restocks items.
+
+    Address:
+      type: object
+      required: [name, phone, line1, city, postalCode, country]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 40 }
+        line1: { type: string, maxLength: 200 }
+        line2: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 100 }
+        postalCode: { type: string, maxLength: 20 }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+
+    OrderItem:
+      type: object
+      required: [productId, slug, name, unitPriceCents, discountPercent, quantity, lineTotalCents]
+      properties:
+        productId: { $ref: '#/components/schemas/ObjectID' }
+        slug: { type: string }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        unitPriceCents: { type: integer }
+        discountPercent: { type: integer }
+        quantity: { type: integer }
+        lineTotalCents: { type: integer }
+        imageUrl: { type: string }
+
+    OrderEvent:
+      type: object
+      required: [type, at, actor]
+      properties:
+        type: { type: string, enum: [created, status_changed, note_updated, shipping_updated, customer_notified] }
+        at: { type: string, format: date-time }
+        actor: { type: string, description: Clerk user id, or "customer" / "system" }
+        fromStatus: { $ref: '#/components/schemas/OrderStatus' }
+        toStatus: { $ref: '#/components/schemas/OrderStatus' }
+        note: { type: string }
+
+    Order:
+      type: object
+      required: [id, number, status, customer, shipping, items, subtotalCents, discountCents, shippingCents, taxCents, totalCents, currency, history, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        number: { type: string, example: AT-261021-7KQ2XM }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        customer:
+          type: object
+          required: [name, email]
+          properties:
+            name: { type: string }
+            email: { type: string }
+            phone: { type: string }
+        shipping: { $ref: '#/components/schemas/Address' }
+        items: { type: array, items: { $ref: '#/components/schemas/OrderItem' } }
+        subtotalCents: { type: integer }
+        discountCents: { type: integer }
+        shippingCents: { type: integer }
+        taxCents: { type: integer }
+        totalCents: { type: integer }
+        currency: { type: string, enum: [CAD] }
+        customerNote: { type: string }
+        staffNote: { type: string }
+        trackingNumber: { type: string }
+        history: { type: array, items: { $ref: '#/components/schemas/OrderEvent' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrderCreateInput:
+      type: object
+      additionalProperties: false
+      required: [customer, shipping, items]
+      properties:
+        customer:
+          type: object
+          additionalProperties: false
+          required: [name, email]
+          properties:
+            name: { type: string, maxLength: 100 }
+            email: { type: string, format: email }
+            phone: { type: string, maxLength: 40 }
+        shipping: { $ref: '#/components/schemas/Address' }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [productId, quantity]
+            properties:
+              productId: { $ref: '#/components/schemas/ObjectID' }
+              quantity: { type: integer, minimum: 1, maximum: 99 }
+        customerNote: { type: string, maxLength: 1000 }
+
+    OrderTracking:
+      type: object
+      required: [number, status, createdAt, items]
+      properties:
+        number: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        createdAt: { type: string, format: date-time }
+        trackingNumber: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { $ref: '#/components/schemas/LocalizedText' }
+              quantity: { type: integer }
+
+    Role:
+      type: string
+      enum: [staff, manager, admin]
+
+    Me:
+      type: object
+      required: [id, email, name, role, permissions]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: [products:write, products:delete, categories:write, orders:read, orders:write, orders:shipping, store:write, staff:manage, audit:read]
+
+    StaffMember:
+      type: object
+      required: [id, email, name, role, banned, createdAt]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        imageUrl: { type: string }
+        role:
+          type: string
+          enum: [staff, manager, admin, none]
+          description: '"none" means the account exists in Clerk but has no staff role (no access).'
+        banned: { type: boolean }
+        lastSignInAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    Invitation:
+      type: object
+      required: [id, email, role, status, createdAt]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        createdAt: { type: string, format: date-time }
+
+    AuditEntry:
+      type: object
+      required: [id, actorId, action, resource, at]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        actorId: { type: string }
+        actorEmail: { type: string }
+        action: { type: string, example: product.update }
+        resource: { type: string, example: product }
+        resourceId: { type: string }
+        requestId: { type: string }
+        at: { type: string, format: date-time }
+
+paths:
+  /healthz:
+    get:
+      tags: [public]
+      summary: Liveness probe
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
+  /readyz:
+    get:
+      tags: [public]
+      summary: Readiness probe (checks MongoDB)
+      responses:
+        '200': { description: Ready }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /v1/categories:
+    get:
+      tags: [public]
+      summary: List all categories (sorted by sortOrder, then name.en)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Category' } }
+  /v1/categories/{slug}:
+    get:
+      tags: [public]
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/products:
+    get:
+      tags: [public]
+      summary: Search/list published products
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: Accent-insensitive search over EN/VI name and description }
+        - { name: category, in: query, schema: { type: string }, description: Category slug }
+        - { name: featured, in: query, schema: { type: boolean } }
+        - { name: inStock, in: query, schema: { type: boolean } }
+        - { name: minPrice, in: query, schema: { type: integer, minimum: 0 }, description: Cents, on final price }
+        - { name: maxPrice, in: query, schema: { type: integer, minimum: 0 }, description: Cents, on final price }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [relevance, newest, price_asc, price_desc, name_asc, name_desc, popular], default: relevance }
+        - { name: locale, in: query, schema: { type: string, enum: [en, vi], default: en }, description: Used for name sorting }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/Problem' }
+  /v1/products/{slug}:
+    get:
+      tags: [public]
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/products/{id}/views:
+    post:
+      tags: [public]
+      summary: Record a product view (deduplicated per visitor for 15 minutes; rate limited)
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '204': { description: Recorded or deduplicated }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+
+  /v1/store-info:
+    get:
+      tags: [public]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StoreInfo' } } } } } }
+
+  /v1/orders:
+    post:
+      tags: [public]
+      summary: Place an order (disabled unless FEATURE_PUBLIC_CHECKOUT=true)
+      description: Prices, discounts and totals are computed by the server. Returns the access code once.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OrderCreateInput' } } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [number, accessCode, totalCents]
+                    properties:
+                      number: { type: string }
+                      accessCode: { type: string }
+                      totalCents: { type: integer }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/orders/track:
+    post:
+      tags: [public]
+      summary: Look up an order with number + email + access code (strictly rate limited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [number, email, accessCode]
+              properties:
+                number: { type: string }
+                email: { type: string }
+                accessCode: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/OrderTracking' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/admin/me:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Me' } } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /v1/admin/products:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: List products in any status (role staff+)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ProductStatus' } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/ObjectID' } }
+        - { name: uncategorized, in: query, schema: { type: boolean } }
+        - { name: featured, in: query, schema: { type: boolean } }
+        - { name: minPrice, in: query, schema: { type: integer } }
+        - { name: maxPrice, in: query, schema: { type: integer } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [newest, oldest, price_asc, price_desc, name_asc, name_desc, stock_asc, popular], default: newest }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Create product (products:write)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProductInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/products/{id}:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Replace editable product fields (products:write). Requires the loaded `version`; 409 if the product changed meanwhile. Images are managed via the images endpoints.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProductInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Delete product and its images (products:delete)
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/admin/products/{id}/images:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Upload one image (JPEG/PNG/WebP, ≤10 MB, ≤40 MP; re-encoded, metadata stripped). Max 10 per product.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                altEn: { type: string, maxLength: 200 }
+                altVi: { type: string, maxLength: 200 }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/products/{id}/images/order:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Reorder images (must contain exactly the product's image ids)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [imageIds]
+              properties:
+                imageIds: { type: array, items: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/products/{id}/images/{imageId}:
+    parameters:
+      - { $ref: '#/components/parameters/ID' }
+      - { name: imageId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /v1/admin/categories:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Category' } } } } } } }
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Create category (categories:write)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/categories/{id}:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Delete category and remove it from products
+      responses:
+        '204': { description: Deleted }
+  /v1/admin/categories/{id}/image:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Set/replace the category image (same rules as product images)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+
+  /v1/admin/store-info:
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Update store info (store:write)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreInfoInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StoreInfo' } } } } } }
+
+  /v1/admin/orders:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: List orders (orders:read)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/OrderStatus' } }
+        - { name: q, in: query, schema: { type: string }, description: Order number, customer name or email }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, total_desc, total_asc], default: newest } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+  /v1/admin/orders/{id}:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/admin/orders/{id}/status:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Transition order status (orders:write). Emails the customer unless notify=false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/OrderStatus' }
+                note: { type: string, maxLength: 1000 }
+                trackingNumber: { type: string, maxLength: 100 }
+                notify: { type: boolean, default: true }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /v1/admin/orders/{id}/notes:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Update staff note (orders:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [staffNote]
+              properties:
+                staffNote: { type: string, maxLength: 5000 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
+  /v1/admin/orders/{id}/shipping:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Replace shipping address (orders:shipping). Not allowed once shipped/cancelled/refunded.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Address' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /v1/admin/staff:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: List staff users (staff:manage)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/StaffMember' } }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+  /v1/admin/staff/invitations:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Invitation' } } } } } } }
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Invite a staff member by email via Clerk (staff:manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Invitation' } } } } } }
+  /v1/admin/staff/invitations/{invitationId}:
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      parameters: [{ name: invitationId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Revoked }
+  /v1/admin/staff/{userId}/role:
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Change role. Cannot change your own role or demote the last admin.
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /v1/admin/staff/{userId}/ban:
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Disable account and revoke sessions. Not allowed on yourself or the last admin.
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
+  /v1/admin/staff/{userId}/unban:
+    post:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
+  /v1/admin/staff/{userId}:
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Delete user from Clerk. Not allowed on yourself or the last admin.
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Deleted }
+
+  /v1/admin/audit:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Audit log of admin mutations (audit:read)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: resource, in: query, schema: { type: string } }
+        - { name: actorId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+                  meta: { $ref: '#/components/schemas/PageMeta' }

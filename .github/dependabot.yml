@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /apps/api
+    schedule: { interval: weekly }
+    groups:
+      go-deps: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      svelte: { patterns: ["svelte*", "@sveltejs/*"] }
+      tooling: { patterns: ["eslint*", "prettier*", "typescript*", "vite*", "vitest*", "@types/*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directories: ["/apps/api", "/apps/storefront", "/apps/admin"]
+    schedule: { interval: weekly }
+  - package-ecosystem: docker-compose
+    directories: ["/deploy", "/"]
+    schedule: { interval: weekly }

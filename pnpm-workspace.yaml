@@ -1,0 +1,10 @@
+packages:
+  - apps/storefront
+  - apps/admin
+  - packages/*
+
+# Supply-chain hardening: only allow lifecycle scripts for packages we vetted,
+# and refuse versions published less than 3 days ago.
+onlyBuiltDependencies:
+  - esbuild
+minimumReleaseAge: 4320

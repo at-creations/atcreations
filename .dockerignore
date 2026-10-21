@@ -1,0 +1,21 @@
+# Root build context (storefront/admin images). Keep secrets and local state out.
+**/node_modules
+**/.svelte-kit
+**/build
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.claude
+.claude-flow
+.swarm
+.mcp.json
+deploy
+backups
+docs
+apps/api
+**/*.pem
+**/*.key

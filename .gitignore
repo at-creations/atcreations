@@ -1,0 +1,45 @@
+# Dependencies & build output
+node_modules/
+.svelte-kit/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+apps/api/bin/
+
+# Env & secrets — never commit real values
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+deploy/secrets/
+deploy/env/*.env
+deploy/.previous-tag
+backups/
+
+# Tooling
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.log
+
+# Agent harness runtime state (config is committed, state is not)
+.swarm/
+.hive-mind/
+.claude/settings.local.json
+
+# Ruflo local secrets and runtime data
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+.claude-flow/metrics/
+.claude-flow/learning/
+.claude-flow/security/
+.claude-flow/agents/
