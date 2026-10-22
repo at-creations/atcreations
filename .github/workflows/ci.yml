@@ -31,16 +31,18 @@ jobs:
       - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
       - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Start MongoDB replica set for integration tests
+      - name: Start MongoDB replica set and Redis for integration tests
         run: |
+          docker run -d --name redis -p 127.0.0.1:6379:6379 redis:8.2-alpine redis-server --requirepass ci-redis --save ""
           docker run -d --name mongo -p 127.0.0.1:27017:27017 mongo:8.0 --replSet rs0 --bind_ip_all
           for i in $(seq 1 30); do
             docker exec mongo mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}).ok }" && break
             sleep 2
           done
       - name: Integration tests
-        run: go test -race -tags integration ./internal/
+        run: go test -race -tags integration ./internal/ ./internal/platform/redisx/
         env:
+          REDIS_TEST_URL: redis://:ci-redis@127.0.0.1:6379/15
           MONGO_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:

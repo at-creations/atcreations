@@ -49,6 +49,7 @@ services:
     networks: [edge, data]
     depends_on:
       mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   storefront:
     <<: *hardening
@@ -80,6 +81,26 @@ services:
     tmpfs: ["/tmp"]
     mem_limit: 384m
     networks: [edge]
+
+  redis:
+    <<: *hardening
+    image: redis:8.2-alpine
+    # Needed only to write the ACL file and drop to the redis user at start.
+    cap_add: ["CHOWN", "SETUID", "SETGID"]
+    entrypoint: ["/bin/sh", "/usr/local/bin/atc-entrypoint.sh"]
+    secrets: [redis_password]
+    volumes:
+      - ./redis/entrypoint.sh:/usr/local/bin/atc-entrypoint.sh:ro
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli --no-auth-warning --user atcreations ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 192m
+    # No published ports: reachable only from the internal data network.
+    networks: [data]
 
   mongo:
     image: mongo:8.0
@@ -141,3 +162,5 @@ secrets:
     file: ./secrets/mongo_root_password
   mongo_app_password:
     file: ./secrets/mongo_app_password
+  redis_password:
+    file: ./secrets/redis_password

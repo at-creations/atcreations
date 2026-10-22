@@ -19,6 +19,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/textx"
 )
 
@@ -35,10 +36,12 @@ type Service struct {
 	storage    media.Storage
 	audit      *audit.Log
 	pepper     []byte
+	cache      *redisx.Cache // nil-safe; invalidated after every catalogue write
 }
 
-func NewService(db *mongo.Database, storage media.Storage, audit *audit.Log, pepper string) *Service {
+func NewService(db *mongo.Database, storage media.Storage, audit *audit.Log, cache *redisx.Cache, pepper string) *Service {
 	return &Service{
+		cache:      cache,
 		products:   db.Collection("products"),
 		categories: db.Collection("categories"),
 		views:      db.Collection("product_views"),
@@ -406,6 +409,7 @@ func (s *Service) CreateProduct(ctx context.Context, actor string, in *ProductIn
 		return ProductDTO{}, err
 	}
 	s.audit.Record(ctx, "product.create", "product", p.ID.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, p)
 }
 
@@ -447,6 +451,7 @@ func (s *Service) UpdateProduct(ctx context.Context, actor string, id bson.Objec
 	}
 	p.Version = *in.Version + 1
 	s.audit.Record(ctx, "product.update", "product", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, p)
 }
 
@@ -462,6 +467,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id bson.ObjectID) error {
 	// Image objects are left for the nightly sweep, which keeps any that
 	// past orders still reference.
 	s.audit.Record(ctx, "product.delete", "product", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil
 }
 
@@ -500,6 +506,7 @@ func (s *Service) AddProductImage(ctx context.Context, actor string, id bson.Obj
 		return ProductDTO{}, err
 	}
 	s.audit.Record(ctx, "product.image.add", "product", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, &p)
 }
 
@@ -523,6 +530,7 @@ func (s *Service) RemoveProductImage(ctx context.Context, actor string, id bson.
 		}
 	}
 	s.audit.Record(ctx, "product.image.remove", "product", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, &after)
 }
 
@@ -558,6 +566,7 @@ func (s *Service) ReorderProductImages(ctx context.Context, actor string, id bso
 	}
 	p.Images = reordered
 	s.audit.Record(ctx, "product.image.reorder", "product", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, p)
 }
 
@@ -615,8 +624,11 @@ func (s *Service) RefreshRecentViews(ctx context.Context) error {
 	models = append(models, mongo.NewUpdateManyModel().
 		SetFilter(bson.M{"_id": bson.M{"$nin": seen}, "recentViews": bson.M{"$ne": 0}}).
 		SetUpdate(bson.M{"$set": bson.M{"recentViews": 0}}))
-	_, err = s.products.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false))
-	return err
+	if _, err = s.products.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false)); err != nil {
+		return err
+	}
+	s.cache.Invalidate(ctx, redisx.NSCatalog) // relevance ordering changed
+	return nil
 }
 
 // ---------- Category writes ----------
@@ -656,6 +668,7 @@ func (s *Service) CreateCategory(ctx context.Context, in *CategoryInput) (Catego
 		return CategoryDTO{}, err
 	}
 	s.audit.Record(ctx, "category.create", "category", c.ID.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.categoryDTO(c), nil
 }
 
@@ -683,6 +696,7 @@ func (s *Service) UpdateCategory(ctx context.Context, id bson.ObjectID, in *Cate
 		return CategoryDTO{}, err
 	}
 	s.audit.Record(ctx, "category.update", "category", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.categoryDTO(&c), nil
 }
 
@@ -702,6 +716,7 @@ func (s *Service) DeleteCategory(ctx context.Context, id bson.ObjectID) error {
 		s.deleteObjects(ctx, c.Image.Key)
 	}
 	s.audit.Record(ctx, "category.delete", "category", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil
 }
 
@@ -727,6 +742,7 @@ func (s *Service) SetCategoryImage(ctx context.Context, id bson.ObjectID, img *m
 	}
 	before.Image = rec
 	s.audit.Record(ctx, "category.image.set", "category", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.categoryDTO(&before), nil
 }
 
@@ -746,6 +762,7 @@ func (s *Service) RemoveCategoryImage(ctx context.Context, id bson.ObjectID) (Ca
 	}
 	before.Image = nil
 	s.audit.Record(ctx, "category.image.remove", "category", id.Hex())
+	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.categoryDTO(&before), nil
 }
 

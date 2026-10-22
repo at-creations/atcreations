@@ -15,10 +15,12 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/invitation"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 )
 
 type Member struct {
@@ -41,10 +43,11 @@ type Invite struct {
 }
 
 type Service struct {
-	// mu serializes guarded mutations so the last-admin check and the change
+	// Guarded mutations are serialized so the last-admin check and the change
 	// it protects cannot interleave (e.g. two admins demoting each other).
-	// The API runs as a single replica; scaling out needs a distributed lock.
+	// With Redis the lock is shared by all API replicas; without it, mu is used.
 	mu          sync.Mutex
+	rdb         *redis.Client
 	users       *user.Client
 	invitations *invitation.Client
 	directory   *auth.ClerkDirectory
@@ -52,8 +55,8 @@ type Service struct {
 	redirectURL string
 }
 
-func New(users *user.Client, invitations *invitation.Client, dir *auth.ClerkDirectory, a *audit.Log, redirectURL string) *Service {
-	return &Service{users: users, invitations: invitations, directory: dir, audit: a, redirectURL: redirectURL}
+func New(users *user.Client, invitations *invitation.Client, dir *auth.ClerkDirectory, a *audit.Log, rdb *redis.Client, redirectURL string) *Service {
+	return &Service{rdb: rdb, users: users, invitations: invitations, directory: dir, audit: a, redirectURL: redirectURL}
 }
 
 func ms(v int64) time.Time { return time.UnixMilli(v).UTC() }
@@ -162,6 +165,22 @@ func (s *Service) target(ctx context.Context, id string) (*clerk.User, error) {
 	return u, nil
 }
 
+// lock serializes staff mutations across replicas.
+func (s *Service) lock(ctx context.Context) (func(), error) {
+	if s.rdb == nil {
+		s.mu.Lock()
+		return s.mu.Unlock, nil
+	}
+	unlock, err := redisx.Lock(ctx, s.rdb, "staff-mutation", 30*time.Second, 10*time.Second)
+	if errors.Is(err, redisx.ErrLockHeld) {
+		return nil, httpx.Conflict("another staff change is in progress; try again")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return unlock, nil
+}
+
 // ---------- handlers ----------
 
 func (s *Service) HandleList(w http.ResponseWriter, r *http.Request) error {
@@ -248,8 +267,11 @@ func (s *Service) HandleRevokeInvitation(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Service) HandleSetRole(w http.ResponseWriter, r *http.Request) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock(r.Context())
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	var in struct {
 		Role auth.Role `json:"role" validate:"required,oneof=staff manager admin"`
 	}
@@ -276,8 +298,11 @@ func (s *Service) HandleSetRole(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) HandleBan(w http.ResponseWriter, r *http.Request) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock(r.Context())
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	target, err := s.target(r.Context(), r.PathValue("userId"))
 	if err != nil {
 		return err
@@ -297,8 +322,11 @@ func (s *Service) HandleBan(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) HandleUnban(w http.ResponseWriter, r *http.Request) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock(r.Context())
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	target, err := s.target(r.Context(), r.PathValue("userId"))
 	if err != nil {
 		return err
@@ -316,8 +344,11 @@ func (s *Service) HandleUnban(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) HandleDelete(w http.ResponseWriter, r *http.Request) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, err := s.lock(r.Context())
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	target, err := s.target(r.Context(), r.PathValue("userId"))
 	if err != nil {
 		return err

@@ -14,6 +14,7 @@ func base() Config {
 		S3Endpoint:             "https://acc.r2.cloudflarestorage.com", S3Bucket: "b",
 		CDNBaseURL: "https://cdn.example.com", StorefrontURL: "https://example.com",
 		HashPepper: strings.Repeat("a", 64), MailProvider: "sendgrid", SendGridKey: "SG.x",
+		RedisURL: "redis://:pw@redis:6379/0",
 	}
 }
 
@@ -35,6 +36,8 @@ func TestValidateRejectsUnsafeSettings(t *testing.T) {
 		"bad proxy CIDR":      func(c *Config) { c.TrustedProxies = []string{"nope"} },
 		"http CDN in prod":    func(c *Config) { c.CDNBaseURL = "http://cdn.example.com" },
 		"unknown environment": func(c *Config) { c.Env = "prod" },
+		"no redis in prod":    func(c *Config) { c.RedisURL = "" },
+		"bad redis scheme":    func(c *Config) { c.RedisURL = "http://redis:6379" },
 	}
 	for name, mutate := range mutations {
 		c := base()

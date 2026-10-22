@@ -15,6 +15,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/invitation"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
@@ -25,6 +26,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/orders"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 	"github.com/atcreations/atcreations/apps/api/internal/server"
 	"github.com/atcreations/atcreations/apps/api/internal/staff"
 	"github.com/atcreations/atcreations/apps/api/internal/storeinfo"
@@ -85,12 +87,23 @@ func run() error {
 	}
 	defer func() { _ = mongoClient.Disconnect(context.Background()) }()
 
+	var rdb *redis.Client
+	if cfg.RedisURL != "" {
+		if rdb, err = redisx.Connect(ctx, cfg.RedisURL); err != nil {
+			return err
+		}
+		defer func() { _ = rdb.Close() }()
+	} else {
+		slog.Warn("REDIS_URL not set: using in-memory rate limits, no response cache")
+	}
+	cache := redisx.NewCache(rdb)
+
 	clerk.SetKey(cfg.ClerkSecretKey)
 	clerkCfg := &clerk.ClientConfig{}
 	clerkCfg.Key = clerk.String(cfg.ClerkSecretKey)
 	users := user.NewClient(clerkCfg)
 	invitations := invitation.NewClient(clerkCfg)
-	directory := auth.NewClerkDirectory(users, 30*time.Second)
+	directory := auth.NewClerkDirectory(users, rdb, 30*time.Second)
 
 	storage := media.NewS3Storage(media.S3Config{
 		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
@@ -103,10 +116,10 @@ func run() error {
 	}
 
 	auditLog := audit.New(db)
-	catalogSvc := catalog.NewService(db, storage, auditLog, cfg.HashPepper)
-	orderSvc := orders.NewService(mongoClient, db, storage, orders.NewMailer(sender, cfg.StoreName, cfg.StorefrontURL), auditLog, cfg.HashPepper)
-	storeSvc := storeinfo.New(db, auditLog)
-	staffSvc := staff.New(users, invitations, directory, auditLog, cfg.ClerkInviteRedirectURL)
+	catalogSvc := catalog.NewService(db, storage, auditLog, cache, cfg.HashPepper)
+	orderSvc := orders.NewService(mongoClient, db, storage, orders.NewMailer(sender, cfg.StoreName, cfg.StorefrontURL), auditLog, cache, cfg.HashPepper)
+	storeSvc := storeinfo.New(db, auditLog, cache)
+	staffSvc := staff.New(users, invitations, directory, auditLog, rdb, cfg.ClerkInviteRedirectURL)
 
 	idxCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	for _, ensure := range []func(context.Context) error{auditLog.EnsureIndexes, catalogSvc.EnsureIndexes, orderSvc.EnsureIndexes} {
@@ -132,7 +145,7 @@ func run() error {
 	}
 
 	handler := server.New(server.Deps{
-		Config: cfg, Mongo: mongoClient, Auth: auth.NewMiddleware(cfg.ClerkAuthorizedParties, directory),
+		Config: cfg, Mongo: mongoClient, Redis: rdb, Cache: cache, Auth: auth.NewMiddleware(cfg.ClerkAuthorizedParties, directory),
 		Catalog: catalogSvc, Orders: orders.NewHandlers(orderSvc, cfg.PublicCheckoutEnabled),
 		StoreInfo: storeSvc, Staff: staffSvc, Audit: auditLog,
 	})

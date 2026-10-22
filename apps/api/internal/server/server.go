@@ -3,12 +3,15 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	httprateredis "github.com/go-chi/httprate-redis"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/config"
 	"github.com/atcreations/atcreations/apps/api/internal/orders"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 	"github.com/atcreations/atcreations/apps/api/internal/staff"
 	"github.com/atcreations/atcreations/apps/api/internal/storeinfo"
 )
@@ -25,6 +29,8 @@ import (
 type Deps struct {
 	Config    *config.Config
 	Mongo     *mongo.Client
+	Redis     *redis.Client // optional; nil means in-memory limits and no cache
+	Cache     *redisx.Cache
 	Auth      *auth.Middleware
 	Catalog   *catalog.Service
 	Orders    *orders.Handlers
@@ -35,14 +41,32 @@ type Deps struct {
 
 func byClientIP(r *http.Request) (string, error) { return httpx.ClientIPFrom(r.Context()), nil }
 
-func limit(n int, window time.Duration) func(http.Handler) http.Handler {
-	return httprate.LimitBy(n, window, byClientIP,
-		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
-			httpx.WriteError(w, r, httpx.NewError(http.StatusTooManyRequests, "too many requests, slow down"))
-		}))
+// limiter builds named per-IP rate limiters. With Redis the counters are
+// shared by every API replica and survive restarts; if Redis becomes
+// unreachable the limiter falls back to local in-memory counters.
+func limiter(rdb *redis.Client) func(name string, n int, window time.Duration) func(http.Handler) http.Handler {
+	return func(name string, n int, window time.Duration) func(http.Handler) http.Handler {
+		opts := []httprate.Option{
+			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+				httpx.WriteError(w, r, httpx.NewError(http.StatusTooManyRequests, "too many requests, slow down"))
+			}),
+		}
+		if rdb != nil {
+			opts = append(opts, httprateredis.WithRedisLimitCounter(&httprateredis.Config{
+				Client:          rdb,
+				PrefixKey:       "ratelimit:" + name,
+				FallbackTimeout: 200 * time.Millisecond,
+				OnFallbackChange: func(active bool) {
+					slog.Warn("rate limiter redis fallback changed", "limiter", name, "local_fallback", active)
+				},
+			}))
+		}
+		return httprate.LimitBy(n, window, byClientIP, opts...)
+	}
 }
 
 func New(d Deps) http.Handler {
+	limit := limiter(d.Redis)
 	r := chi.NewRouter()
 	r.Use(
 		httpx.RequestID,
@@ -58,7 +82,7 @@ func New(d Deps) http.Handler {
 			AllowCredentials: false, // bearer tokens only; no cookies are ever used
 			MaxAge:           600,
 		}),
-		limit(300, time.Minute), // global per-IP ceiling
+		limit("global", 300, time.Minute), // per-IP ceiling
 	)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, httpx.ErrNotFound) })
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +98,11 @@ func New(d Deps) http.Handler {
 		if err := d.Mongo.Ping(ctx, readpref.Primary()); err != nil {
 			return httpx.NewError(http.StatusServiceUnavailable, "not ready")
 		}
+		if d.Redis != nil {
+			if err := d.Redis.Ping(ctx).Err(); err != nil {
+				return httpx.NewError(http.StatusServiceUnavailable, "not ready")
+			}
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 		return nil
 	}))
@@ -85,19 +114,20 @@ func New(d Deps) http.Handler {
 		// ---- Public catalogue ----
 		r.Group(func(r chi.Router) {
 			r.Use(httpx.PublicCache(60 * time.Second))
-			r.Get("/categories", w(c.HandlePublicCategories))
-			r.Get("/categories/{slug}", w(c.HandlePublicCategory))
-			r.Get("/products", w(c.HandlePublicProducts))
-			r.Get("/products/{slug}", w(c.HandlePublicProduct))
-			r.Get("/store-info", w(d.StoreInfo.HandleGet))
+			catalogCache := d.Cache.Middleware(redisx.NSCatalog, 5*time.Minute)
+			r.With(catalogCache).Get("/categories", w(c.HandlePublicCategories))
+			r.With(catalogCache).Get("/categories/{slug}", w(c.HandlePublicCategory))
+			r.With(catalogCache).Get("/products", w(c.HandlePublicProducts))
+			r.With(catalogCache).Get("/products/{slug}", w(c.HandlePublicProduct))
+			r.With(d.Cache.Middleware(redisx.NSStore, time.Hour)).Get("/store-info", w(d.StoreInfo.HandleGet))
 		})
-		r.With(limit(30, time.Minute)).Post("/products/{id}/views", w(c.HandleRecordView))
-		r.With(limit(5, 10*time.Minute)).Post("/orders", w(o.Create))
-		r.With(limit(10, 15*time.Minute)).Post("/orders/track", w(o.Track))
+		r.With(limit("views", 30, time.Minute)).Post("/products/{id}/views", w(c.HandleRecordView))
+		r.With(limit("orders", 5, 10*time.Minute)).Post("/orders", w(o.Create))
+		r.With(limit("track", 10, 15*time.Minute)).Post("/orders/track", w(o.Track))
 
 		// ---- Admin (Clerk-authenticated) ----
 		r.Route("/admin", func(r chi.Router) {
-			r.Use(httpx.NoStore, d.Auth.Handler, limit(600, time.Minute))
+			r.Use(httpx.NoStore, d.Auth.Handler, limit("admin", 600, time.Minute))
 			can := auth.Require
 
 			r.Get("/me", w(handleMe))
@@ -107,7 +137,7 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.ProductsWrite)).Post("/products", w(c.HandleCreateProduct))
 			r.With(can(auth.ProductsWrite)).Put("/products/{id}", w(c.HandleUpdateProduct))
 			r.With(can(auth.ProductsDelete)).Delete("/products/{id}", w(c.HandleDeleteProduct))
-			r.With(can(auth.ProductsWrite), limit(60, time.Minute)).Post("/products/{id}/images", w(c.HandleAddProductImage))
+			r.With(can(auth.ProductsWrite), limit("uploads", 60, time.Minute)).Post("/products/{id}/images", w(c.HandleAddProductImage))
 			r.With(can(auth.ProductsWrite)).Put("/products/{id}/images/order", w(c.HandleReorderProductImages))
 			r.With(can(auth.ProductsWrite)).Delete("/products/{id}/images/{imageId}", w(c.HandleRemoveProductImage))
 
@@ -115,7 +145,7 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.CategoriesWrite)).Post("/categories", w(c.HandleCreateCategory))
 			r.With(can(auth.CategoriesWrite)).Put("/categories/{id}", w(c.HandleUpdateCategory))
 			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}", w(c.HandleDeleteCategory))
-			r.With(can(auth.CategoriesWrite), limit(60, time.Minute)).Put("/categories/{id}/image", w(c.HandleSetCategoryImage))
+			r.With(can(auth.CategoriesWrite), limit("uploads", 60, time.Minute)).Put("/categories/{id}/image", w(c.HandleSetCategoryImage))
 			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}/image", w(c.HandleRemoveCategoryImage))
 
 			r.With(can(auth.StoreWrite)).Put("/store-info", w(d.StoreInfo.HandlePut))
@@ -127,7 +157,7 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.OrdersShipping)).Put("/orders/{id}/shipping", w(o.SetShipping))
 
 			r.Group(func(r chi.Router) {
-				r.Use(can(auth.StaffManage), limit(60, time.Minute))
+				r.Use(can(auth.StaffManage), limit("staff", 60, time.Minute))
 				r.Get("/staff", w(st.HandleList))
 				r.Get("/staff/invitations", w(st.HandleListInvitations))
 				r.Post("/staff/invitations", w(st.HandleInvite))

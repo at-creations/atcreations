@@ -22,6 +22,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 )
 
 // Unambiguous alphabet (no 0/O, 1/I/L).
@@ -35,10 +36,12 @@ type Service struct {
 	mailer   *Mailer
 	audit    *audit.Log
 	pepper   []byte
+	cache    *redisx.Cache
 }
 
-func NewService(client *mongo.Client, db *mongo.Database, storage media.Storage, mailer *Mailer, a *audit.Log, pepper string) *Service {
+func NewService(client *mongo.Client, db *mongo.Database, storage media.Storage, mailer *Mailer, a *audit.Log, cache *redisx.Cache, pepper string) *Service {
 	return &Service{
+		cache:  cache,
 		client: client, orders: db.Collection("orders"), products: db.Collection("products"),
 		storage: storage, mailer: mailer, audit: a, pepper: []byte(pepper),
 	}
@@ -153,6 +156,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Order, string, 
 	if err != nil {
 		return nil, "", err
 	}
+	s.cache.Invalidate(ctx, redisx.NSCatalog) // stock changed
 
 	go s.notify(context.WithoutCancel(ctx), order.ID, func(ctx context.Context) error {
 		return s.mailer.Confirmation(ctx, order, accessCode)
@@ -320,6 +324,9 @@ func (s *Service) Transition(ctx context.Context, actor string, id bson.ObjectID
 		return nil, err
 	}
 	s.audit.Record(ctx, "order.status."+string(in.Status), "order", id.Hex())
+	if in.Status == Cancelled {
+		s.cache.Invalidate(ctx, redisx.NSCatalog) // restocked
+	}
 	if in.Notify == nil || *in.Notify {
 		o := updated
 		go s.notify(context.WithoutCancel(ctx), id, func(ctx context.Context) error { return s.mailer.StatusChanged(ctx, &o) })

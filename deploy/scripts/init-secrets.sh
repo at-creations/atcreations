@@ -14,6 +14,7 @@ gen() { [ -s "$1" ] || { "${@:2}" | oneline > "$1"; echo "created $1"; }; }
 gen secrets/mongo_keyfile        openssl rand -base64 756
 gen secrets/mongo_root_password  openssl rand -hex 32
 gen secrets/mongo_app_password   openssl rand -hex 32
+gen secrets/redis_password       openssl rand -hex 32
 
 for app in api storefront admin; do
   [ -s "env/$app.env" ] || { cp "env/$app.env.example" "env/$app.env"; echo "created env/$app.env (edit it!)"; }
@@ -21,6 +22,9 @@ done
 
 if grep -q "__MONGO_APP_PASSWORD__" env/api.env; then
   sed -i "s/__MONGO_APP_PASSWORD__/$(cat secrets/mongo_app_password)/" env/api.env
+fi
+if grep -q "__REDIS_PASSWORD__" env/api.env; then
+  sed -i "s/__REDIS_PASSWORD__/$(cat secrets/redis_password)/" env/api.env
 fi
 if grep -q "__HASH_PEPPER__" env/api.env; then
   sed -i "s/__HASH_PEPPER__/$(openssl rand -hex 32 | oneline)/" env/api.env

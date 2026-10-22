@@ -27,6 +27,11 @@ type Config struct {
 	MongoDatabase string        `env:"MONGO_DATABASE" envDefault:"atcreations"`
 	MongoTimeout  time.Duration `env:"MONGO_TIMEOUT" envDefault:"10s"`
 
+	// Redis backs rate limits, the public response cache, the identity cache
+	// and distributed locks. Optional in development (in-memory fallbacks),
+	// required in production. redis:// or rediss://.
+	RedisURL string `env:"REDIS_URL,unset"`
+
 	ClerkSecretKey string `env:"CLERK_SECRET_KEY,required,unset"`
 	// Origins of the admin app; checked against the token's azp claim.
 	ClerkAuthorizedParties []string `env:"CLERK_AUTHORIZED_PARTIES" envSeparator:","`
@@ -101,6 +106,14 @@ func (c *Config) validate() error {
 			continue
 		}
 		c.TrustedProxyPrefixes = append(c.TrustedProxyPrefixes, prefix.Masked())
+	}
+
+	if c.RedisURL != "" {
+		if u, err := url.Parse(c.RedisURL); err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") {
+			errs = append(errs, errors.New("REDIS_URL must be a redis:// or rediss:// URL"))
+		}
+	} else if c.IsProduction() {
+		errs = append(errs, errors.New("REDIS_URL is required in production"))
 	}
 
 	if len(c.HashPepper) < 32 {

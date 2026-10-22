@@ -23,6 +23,7 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/clerk/clerk-sdk-go/v2/user"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 )
@@ -168,6 +169,7 @@ func Require(perm Permission) func(http.Handler) http.Handler {
 type ClerkDirectory struct {
 	users *user.Client
 	ttl   time.Duration
+	rdb   *redis.Client // optional shared cache across replicas
 	mu    sync.Mutex
 	cache map[string]cachedIdentity
 }
@@ -177,16 +179,27 @@ type cachedIdentity struct {
 	exp time.Time
 }
 
-func NewClerkDirectory(users *user.Client, ttl time.Duration) *ClerkDirectory {
-	return &ClerkDirectory{users: users, ttl: ttl, cache: map[string]cachedIdentity{}}
+func NewClerkDirectory(users *user.Client, rdb *redis.Client, ttl time.Duration) *ClerkDirectory {
+	return &ClerkDirectory{users: users, rdb: rdb, ttl: ttl, cache: map[string]cachedIdentity{}}
 }
 
+func identityKey(userID string) string { return "identity:" + userID }
+
 func (d *ClerkDirectory) Identity(ctx context.Context, userID string) (Identity, error) {
-	d.mu.Lock()
-	c, ok := d.cache[userID]
-	d.mu.Unlock()
-	if ok && time.Now().Before(c.exp) {
-		return c.id, nil
+	if d.rdb != nil {
+		if raw, err := d.rdb.Get(ctx, identityKey(userID)).Bytes(); err == nil {
+			var id Identity
+			if json.Unmarshal(raw, &id) == nil {
+				return id, nil
+			}
+		}
+	} else {
+		d.mu.Lock()
+		c, ok := d.cache[userID]
+		d.mu.Unlock()
+		if ok && time.Now().Before(c.exp) {
+			return c.id, nil
+		}
 	}
 	u, err := d.users.Get(ctx, userID)
 	if err != nil {
@@ -203,6 +216,12 @@ func (d *ClerkDirectory) Identity(ctx context.Context, userID string) (Identity,
 		return Identity{}, httpx.ErrUnauthorized
 	}
 	id := IdentityOf(u)
+	if d.rdb != nil {
+		if raw, err := json.Marshal(id); err == nil {
+			_ = d.rdb.Set(ctx, identityKey(userID), raw, d.ttl).Err()
+		}
+		return id, nil
+	}
 	d.mu.Lock()
 	if len(d.cache) > 10_000 {
 		clear(d.cache)
@@ -214,6 +233,9 @@ func (d *ClerkDirectory) Identity(ctx context.Context, userID string) (Identity,
 
 // Forget drops a cached identity (call after role changes).
 func (d *ClerkDirectory) Forget(userID string) {
+	if d.rdb != nil {
+		_ = d.rdb.Del(context.Background(), identityKey(userID)).Err()
+	}
 	d.mu.Lock()
 	delete(d.cache, userID)
 	d.mu.Unlock()

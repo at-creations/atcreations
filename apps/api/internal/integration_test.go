@@ -81,8 +81,8 @@ func setup(t *testing.T) (*catalog.Service, *orders.Service, *memStorage) {
 	})
 	store := &memStorage{objs: map[string]time.Time{}}
 	a := audit.New(db)
-	cat := catalog.NewService(db, store, a, pepper)
-	ord := orders.NewService(client, db, store, orders.NewMailer(nopSender{}, "Test", "https://x"), a, pepper)
+	cat := catalog.NewService(db, store, a, nil, pepper)
+	ord := orders.NewService(client, db, store, orders.NewMailer(nopSender{}, "Test", "https://x"), a, nil, pepper)
 	for _, f := range []func(context.Context) error{a.EnsureIndexes, cat.EnsureIndexes, ord.EnsureIndexes} {
 		if err := f(ctx); err != nil {
 			t.Fatal(err)

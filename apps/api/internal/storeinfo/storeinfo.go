@@ -15,6 +15,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 )
 
 const docID = "store"
@@ -48,10 +49,11 @@ type Input struct {
 type Service struct {
 	coll  *mongo.Collection
 	audit *audit.Log
+	cache *redisx.Cache
 }
 
-func New(db *mongo.Database, a *audit.Log) *Service {
-	return &Service{coll: db.Collection("store_info"), audit: a}
+func New(db *mongo.Database, a *audit.Log, cache *redisx.Cache) *Service {
+	return &Service{coll: db.Collection("store_info"), audit: a, cache: cache}
 }
 
 func (s *Service) Get(ctx context.Context) (StoreInfo, error) {
@@ -148,6 +150,7 @@ func (s *Service) HandlePut(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	s.audit.Record(r.Context(), "store.update", "store", docID)
+	s.cache.Invalidate(r.Context(), redisx.NSStore)
 	httpx.JSON(w, http.StatusOK, info)
 	return nil
 }
