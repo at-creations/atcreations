@@ -452,5 +452,10 @@
 	"audit_res_order": "Order",
 	"audit_res_staff": "Staff",
 	"audit_res_invitation": "Invitation",
-	"audit_res_store": "Store info"
+	"audit_res_store": "Store info",
+	"pf_conflict_title": "Product changed elsewhere",
+	"pf_conflict_message": "This product was updated by someone else (or its stock changed) after you opened it. Reload the latest version? Your unsaved edits will be discarded.",
+	"pf_conflict_reload": "Reload latest",
+	"pf_conflict_reloaded": "Loaded the latest version of the product.",
+	"staff_invitations_load_failed": "Could not load pending invitations."
 }

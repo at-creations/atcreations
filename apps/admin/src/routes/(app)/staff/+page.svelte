@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { Invitation, PageMeta, StaffMember } from '@atcreations/api-types';
-	import { tick, untrack } from 'svelte';
+	import type { Invitation, StaffMember } from '@atcreations/api-types';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, unwrap } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -16,6 +16,13 @@
 	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import {
+		createDeleteStaffMutation,
+		createRevokeInvitationMutation,
+		createStaffBanMutation,
+		invitationsQuery,
+		staffListQuery
+	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
@@ -34,59 +41,31 @@
 		};
 	});
 
-	let staff = $state<StaffMember[]>([]);
-	let meta = $state<PageMeta | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let invitations = $state<Invitation[] | null>(null);
+	const canManage = $derived(session.can('staff:manage'));
+	const staffQuery = createQuery(() => ({
+		...staffListQuery({
+			page: filters.page,
+			pageSize: filters.pageSize,
+			q: filters.q || undefined
+		}),
+		placeholderData: keepPreviousData,
+		enabled: canManage
+	}));
+	const invitationsList = createQuery(() => ({ ...invitationsQuery(), enabled: canManage }));
+	const banMutation = createStaffBanMutation();
+	const deleteMutation = createDeleteStaffMutation();
+	const revokeMutation = createRevokeInvitationMutation();
+
+	const staff = $derived(staffQuery.data?.data ?? []);
+	const meta = $derived(staffQuery.data?.meta ?? null);
+	const showError = $derived(staffQuery.isError && !staffQuery.data);
 	let busyId = $state<string | null>(null);
-	let seq = 0;
 
 	let inviteOpen = $state(false);
 	let inviteDialog = $state<ReturnType<typeof InviteDialog>>();
 	let roleOpen = $state(false);
 	let roleMember = $state<StaffMember | null>(null);
 	let roleDialog = $state<ReturnType<typeof RoleDialog>>();
-
-	async function load(f: typeof filters) {
-		const current = ++seq;
-		loading = true;
-		loadError = null;
-		try {
-			const res = await unwrap(
-				api().GET('/v1/admin/staff', {
-					params: { query: { page: f.page, pageSize: f.pageSize, q: f.q || undefined } }
-				})
-			);
-			if (current !== seq) return;
-			staff = res.data;
-			meta = res.meta;
-		} catch (error) {
-			if (current === seq) loadError = error;
-		} finally {
-			if (current === seq) loading = false;
-		}
-	}
-
-	async function loadInvitations() {
-		try {
-			const res = await unwrap(api().GET('/v1/admin/staff/invitations'));
-			invitations = res.data.filter((i) => i.status === 'pending');
-		} catch (error) {
-			invitations = [];
-			toastError(error);
-		}
-	}
-
-	$effect(() => {
-		const f = filters;
-		if (!session.can('staff:manage')) return;
-		untrack(() => load(f));
-	});
-
-	$effect(() => {
-		if (session.can('staff:manage')) untrack(loadInvitations);
-	});
 
 	function navigate(changes: Record<string, string | number | null | undefined>) {
 		// Same page, only the query string changes (built from page.url).
@@ -104,11 +83,6 @@
 	$effect(() => () => clearTimeout(timer));
 
 	const isSelf = (member: StaffMember) => member.id === session.me?.id;
-
-	function replace(member: StaffMember) {
-		const i = staff.findIndex((s) => s.id === member.id);
-		if (i !== -1) staff[i] = member;
-	}
 
 	async function openInvite() {
 		inviteDialog?.reset();
@@ -135,16 +109,7 @@
 		if (!ok) return;
 		busyId = member.id;
 		try {
-			const res = banning
-				? await unwrap(
-						api().POST('/v1/admin/staff/{userId}/ban', { params: { path: { userId: member.id } } })
-					)
-				: await unwrap(
-						api().POST('/v1/admin/staff/{userId}/unban', {
-							params: { path: { userId: member.id } }
-						})
-					);
-			replace(res.data);
+			await banMutation.mutateAsync({ userId: member.id, ban: banning });
 			toast.success(
 				banning
 					? m.staff_banned_ok({ email: member.email })
@@ -170,12 +135,9 @@
 		if (!ok) return;
 		busyId = member.id;
 		try {
-			await unwrap(
-				api().DELETE('/v1/admin/staff/{userId}', { params: { path: { userId: member.id } } })
-			);
+			await deleteMutation.mutateAsync(member.id);
 			toast.success(m.staff_deleted());
 			if (staff.length === 1 && filters.page > 1) navigate({ page: filters.page - 1 });
-			else load(filters);
 		} catch (error) {
 			toastError(error, m.staff_delete_failed());
 		} finally {
@@ -192,12 +154,7 @@
 		});
 		if (!ok) return;
 		try {
-			await unwrap(
-				api().DELETE('/v1/admin/staff/invitations/{invitationId}', {
-					params: { path: { invitationId: invitation.id } }
-				})
-			);
-			invitations = (invitations ?? []).filter((i) => i.id !== invitation.id);
+			await revokeMutation.mutateAsync(invitation.id);
 			toast.success(m.staff_revoked());
 		} catch (error) {
 			toastError(error, m.staff_action_failed());
@@ -278,15 +235,24 @@
 		</div>
 	</div>
 
-	<section class="overflow-hidden card" aria-busy={loading}>
-		{#if loadError}
-			<LoadState error={loadError} fallback={m.staff_load_failed()} onretry={() => load(filters)} />
-		{:else if loading && staff.length === 0}
+	<section class="overflow-hidden card" aria-busy={staffQuery.isFetching}>
+		{#if showError}
+			<LoadState
+				error={staffQuery.error}
+				fallback={m.staff_load_failed()}
+				onretry={() => staffQuery.refetch()}
+			/>
+		{:else if staffQuery.isPending}
 			<LoadState loading />
 		{:else if staff.length === 0}
 			<p class="p-10 text-center text-slate-500">{m.staff_none()}</p>
 		{:else}
-			<table class={['hidden w-full text-left text-sm lg:table', loading && 'opacity-60']}>
+			<table
+				class={[
+					'hidden w-full text-left text-sm lg:table',
+					staffQuery.isPlaceholderData && 'opacity-60'
+				]}
+			>
 				<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
 					<tr>
 						<th scope="col" class="px-4 py-3">{m.staff_col_name()}</th>
@@ -329,7 +295,12 @@
 					{/each}
 				</tbody>
 			</table>
-			<ul class={['divide-y divide-slate-100 lg:hidden', loading && 'opacity-60']}>
+			<ul
+				class={[
+					'divide-y divide-slate-100 lg:hidden',
+					staffQuery.isPlaceholderData && 'opacity-60'
+				]}
+			>
 				{#each staff as member (member.id)}
 					<li class="space-y-2 p-4">
 						<div class="flex items-center gap-3">
@@ -349,7 +320,7 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if meta && !loadError}
+		{#if meta && !showError}
 			<Pagination
 				{meta}
 				pageSizes={[...PAGE_SIZES]}
@@ -363,13 +334,19 @@
 		<h2 id="{uid}-pending" class="border-b border-slate-200 px-5 py-3 font-semibold">
 			{m.staff_pending_title()}
 		</h2>
-		{#if invitations === null}
+		{#if invitationsList.isPending}
 			<LoadState loading />
-		{:else if invitations.length === 0}
+		{:else if invitationsList.isError && !invitationsList.data}
+			<LoadState
+				error={invitationsList.error}
+				fallback={m.staff_invitations_load_failed()}
+				onretry={() => invitationsList.refetch()}
+			/>
+		{:else if !invitationsList.data || invitationsList.data.length === 0}
 			<p class="p-5 text-sm text-slate-500">{m.staff_pending_none()}</p>
 		{:else}
 			<ul class="divide-y divide-slate-100">
-				{#each invitations as invitation (invitation.id)}
+				{#each invitationsList.data as invitation (invitation.id)}
 					<li class="flex flex-wrap items-center gap-3 px-5 py-3">
 						<Icon name="mail" class="text-slate-400" />
 						<span class="min-w-0 flex-1 truncate text-sm font-medium">{invitation.email}</span>
@@ -390,10 +367,6 @@
 		{/if}
 	</section>
 
-	<InviteDialog
-		bind:this={inviteDialog}
-		bind:open={inviteOpen}
-		oninvited={(invitation) => (invitations = [invitation, ...(invitations ?? [])])}
-	/>
-	<RoleDialog bind:this={roleDialog} bind:open={roleOpen} member={roleMember} onupdated={replace} />
+	<InviteDialog bind:this={inviteDialog} bind:open={inviteOpen} />
+	<RoleDialog bind:this={roleDialog} bind:open={roleOpen} member={roleMember} />
 </RequirePermission>

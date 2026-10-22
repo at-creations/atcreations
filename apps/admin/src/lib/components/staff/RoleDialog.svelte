@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Role, StaffMember } from '@atcreations/api-types';
-	import { api, unwrap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -8,23 +7,23 @@
 	import { permissionLabel, roleLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createStaffRoleMutation } from '$lib/queries';
 	import { toast } from '$lib/state/toast.svelte';
 	import { permissionDiff, ROLES } from '$lib/utils/permissions';
 	import RoleLadder from './RoleLadder.svelte';
 
 	let {
 		open = $bindable(false),
-		member,
-		onupdated
+		member
 	}: {
 		open?: boolean;
 		member: StaffMember | null;
-		onupdated: (member: StaffMember) => void;
 	} = $props();
 
 	const uid = $props.id();
 	let role = $state<Role>('staff');
-	let saving = $state(false);
+	const changeRole = createStaffRoleMutation();
+	const saving = $derived(changeRole.isPending);
 
 	export function reset() {
 		role = member && member.role !== 'none' ? member.role : 'staff';
@@ -36,22 +35,13 @@
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (!member || saving || unchanged) return;
-		saving = true;
 		try {
-			const res = await unwrap(
-				api().PUT('/v1/admin/staff/{userId}/role', {
-					params: { path: { userId: member.id } },
-					body: { role }
-				})
-			);
+			await changeRole.mutateAsync({ userId: member.id, role });
 			toast.success(m.staff_role_changed());
 			open = false;
-			onupdated(res.data);
 		} catch (error) {
 			// 409: self-modification / last admin — the problem detail is shown in the toast.
 			toastError(error, m.staff_role_change_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>

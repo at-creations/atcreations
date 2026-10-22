@@ -1,10 +1,9 @@
 <script lang="ts">
-	import type { Order, OrderStatus, PageMeta } from '@atcreations/api-types';
-	import { untrack } from 'svelte';
+	import type { Order, OrderStatus } from '@atcreations/api-types';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { api, unwrap } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -13,6 +12,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import { formatDateTime, orderStatusLabel } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages.js';
+	import { orderListQuery, type OrderListParams } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { formatCAD } from '$lib/utils/money';
 	import { ORDER_STATUSES } from '$lib/utils/order-status';
@@ -49,47 +49,24 @@
 		filters.from && filters.to && filters.from > filters.to ? m.orders_date_invalid() : ''
 	);
 
-	let orders = $state<Order[]>([]);
-	let meta = $state<PageMeta | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let seq = 0;
-
-	async function load(f: typeof filters) {
-		if (!session.can('orders:read')) return;
-		const current = ++seq;
-		loading = true;
-		loadError = null;
-		try {
-			const res = await unwrap(
-				api().GET('/v1/admin/orders', {
-					params: {
-						query: {
-							page: f.page,
-							pageSize: f.pageSize,
-							q: f.q || undefined,
-							status: f.status,
-							from: f.from || undefined,
-							to: f.to && !(f.from && f.from > f.to) ? f.to : undefined,
-							sort: f.sort
-						}
-					}
-				})
-			);
-			if (current !== seq) return;
-			orders = res.data;
-			meta = res.meta;
-		} catch (error) {
-			if (current === seq) loadError = error;
-		} finally {
-			if (current === seq) loading = false;
-		}
-	}
-
-	$effect(() => {
-		const f = filters;
-		untrack(() => load(f));
+	const listParams = $derived<OrderListParams>({
+		page: filters.page,
+		pageSize: filters.pageSize,
+		q: filters.q || undefined,
+		status: filters.status,
+		from: filters.from || undefined,
+		to: filters.to && !(filters.from && filters.from > filters.to) ? filters.to : undefined,
+		sort: filters.sort
 	});
+
+	const ordersQuery = createQuery(() => ({
+		...orderListQuery(listParams),
+		placeholderData: keepPreviousData,
+		enabled: session.can('orders:read')
+	}));
+	const orders = $derived(ordersQuery.data?.data ?? []);
+	const meta = $derived(ordersQuery.data?.meta ?? null);
+	const showError = $derived(ordersQuery.isError && !ordersQuery.data);
 
 	function navigate(changes: Record<string, string | number | null | undefined>) {
 		// Same page, only the query string changes (built from page.url).
@@ -192,20 +169,25 @@
 		{/if}
 	</section>
 
-	<section class="overflow-hidden card" aria-busy={loading}>
-		{#if loadError}
+	<section class="overflow-hidden card" aria-busy={ordersQuery.isFetching}>
+		{#if showError}
 			<LoadState
-				error={loadError}
+				error={ordersQuery.error}
 				fallback={m.orders_load_failed()}
-				onretry={() => load(filters)}
+				onretry={() => ordersQuery.refetch()}
 			/>
-		{:else if loading && orders.length === 0}
+		{:else if ordersQuery.isPending}
 			<LoadState loading />
 		{:else if orders.length === 0}
 			<p class="p-10 text-center text-slate-500">{m.orders_none()}</p>
 		{:else}
 			<div class="overflow-x-auto">
-				<table class={['w-full min-w-[720px] text-left text-sm', loading && 'opacity-60']}>
+				<table
+					class={[
+						'w-full min-w-[720px] text-left text-sm',
+						ordersQuery.isPlaceholderData && 'opacity-60'
+					]}
+				>
 					<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
 						<tr>
 							<th scope="col" class="px-4 py-3">{m.orders_col_number()}</th>
@@ -239,7 +221,7 @@
 				</table>
 			</div>
 		{/if}
-		{#if meta && !loadError}
+		{#if meta && !showError}
 			<Pagination
 				{meta}
 				pageSizes={[...PAGE_SIZES]}

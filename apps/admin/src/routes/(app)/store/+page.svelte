@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { BusinessHours, StoreInfo, StoreInfoInput } from '@atcreations/api-types';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import { fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -9,6 +10,7 @@
 	import { formatDateTime } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createSaveStoreInfoMutation, storeInfoQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
 	import { type Day, normalizeHours, toHoursInput, validateHours } from '$lib/utils/hours';
@@ -16,10 +18,13 @@
 	const session = getAdminSession();
 	const uid = $props.id();
 
-	let info = $state<StoreInfo | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let saving = $state(false);
+	const infoQuery = createQuery(() => ({
+		...storeInfoQuery(),
+		enabled: session.can('store:write')
+	}));
+	const saveInfo = createSaveStoreInfoMutation();
+	const info = $derived(infoQuery.data ?? null);
+	const saving = $derived(saveInfo.isPending);
 	let errors = $state<Record<string, string>>({});
 
 	let email = $state('');
@@ -38,29 +43,28 @@
 		sun: m.day_sun
 	};
 
+	// Bookkeeping for syncing the form with the cache (not rendered, so not reactive).
+	let filledFrom: StoreInfo | null = null;
+	let baseline = '';
+	const formSnapshot = () => JSON.stringify({ email, phone, address, mapUrl, hours });
+
 	function fill(data: StoreInfo) {
-		info = data;
+		filledFrom = data;
 		email = data.email ?? '';
 		phone = data.phone ?? '';
 		address = data.address ?? '';
 		mapUrl = data.mapUrl ?? '';
 		hours = normalizeHours(data.businessHours);
+		baseline = formSnapshot();
 	}
 
-	async function load() {
-		loading = true;
-		loadError = null;
-		try {
-			fill((await unwrap(api().GET('/v1/store-info'))).data);
-		} catch (error) {
-			loadError = error;
-		} finally {
-			loading = false;
-		}
-	}
-
-	$effect(() => {
-		if (session.can('store:write')) untrack(load);
+	// Fill the form on first load, and on refetches as long as there are no unsaved edits.
+	$effect.pre(() => {
+		const next = info;
+		if (!next || next === filledFrom) return;
+		untrack(() => {
+			if (!filledFrom || formSnapshot() === baseline) fill(next);
+		});
 	});
 
 	const hourErrors = $derived(
@@ -104,15 +108,12 @@
 			...(mapUrl.trim() ? { mapUrl: mapUrl.trim() } : {}),
 			businessHours: toHoursInput(hours)
 		};
-		saving = true;
 		try {
-			fill((await unwrap(api().PUT('/v1/admin/store-info', { body }))).data);
+			fill(await saveInfo.mutateAsync(body));
 			toast.success(m.store_saved());
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			toastError(error, m.store_save_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>
@@ -124,10 +125,14 @@
 			? m.store_last_updated({ date: formatDateTime(info.updatedAt) })
 			: m.store_subtitle()}
 	/>
-	{#if loading}
+	{#if infoQuery.isPending}
 		<LoadState loading />
-	{:else if loadError}
-		<LoadState error={loadError} fallback={m.store_load_failed()} onretry={load} />
+	{:else if infoQuery.isError && !info}
+		<LoadState
+			error={infoQuery.error}
+			fallback={m.store_load_failed()}
+			onretry={() => infoQuery.refetch()}
+		/>
 	{:else}
 		<form class="space-y-6" onsubmit={submit} novalidate>
 			<fieldset class="space-y-4 card p-5" disabled={saving} aria-labelledby="{uid}-contact">

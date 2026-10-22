@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { Order, OrderEvent, OrderStatus } from '@atcreations/api-types';
-	import { tick, untrack } from 'svelte';
+	import type { OrderEvent, OrderStatus } from '@atcreations/api-types';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { api, ApiError, unwrap } from '$lib/api';
+	import { ApiError } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import AddressDialog from '$lib/components/orders/AddressDialog.svelte';
@@ -15,6 +16,7 @@
 	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createOrderNoteMutation, orderDetailQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
 	import { formatCAD } from '$lib/utils/money';
@@ -23,51 +25,34 @@
 	const session = getAdminSession();
 	const uid = $props.id();
 
-	let order = $state<Order | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let notFound = $state(false);
+	const orderQuery = createQuery(() => ({
+		...orderDetailQuery(page.params.id ?? ''),
+		enabled: session.can('orders:read')
+	}));
+	const saveNoteMutation = createOrderNoteMutation();
 
-	let staffNote = $state('');
-	let savingNote = $state(false);
+	const order = $derived(orderQuery.data ?? null);
+	const notFound = $derived(
+		orderQuery.error instanceof ApiError &&
+			(orderQuery.error.status === 404 || orderQuery.error.status === 400)
+	);
+	const loadError = $derived(!order && orderQuery.isError ? orderQuery.error : null);
+
+	// Editable copy of the note; reset whenever the server value changes.
+	const serverNote = $derived(order?.staffNote ?? '');
+	let staffNote = $derived(serverNote);
+	const savingNote = $derived(saveNoteMutation.isPending);
 	let statusOpen = $state(false);
 	let statusTarget = $state<OrderStatus | null>(null);
 	let statusDialog = $state<ReturnType<typeof StatusDialog>>();
 	let addressOpen = $state(false);
 	let addressDialog = $state<ReturnType<typeof AddressDialog>>();
 
-	function setOrder(next: Order) {
-		order = next;
-		staffNote = next.staffNote ?? '';
-	}
-
-	async function load(id: string) {
-		loading = true;
-		loadError = null;
-		notFound = false;
-		try {
-			const res = await unwrap(api().GET('/v1/admin/orders/{id}', { params: { path: { id } } }));
-			setOrder(res.data);
-		} catch (error) {
-			if (error instanceof ApiError && (error.status === 404 || error.status === 400))
-				notFound = true;
-			else loadError = error;
-		} finally {
-			loading = false;
-		}
-	}
-
-	$effect(() => {
-		const id = page.params.id ?? '';
-		if (!session.can('orders:read')) return;
-		untrack(() => load(id));
-	});
-
 	const nextStatuses = $derived(order ? allowedNextStatuses(order.status) : []);
 	const canWrite = $derived(session.can('orders:write'));
 	const canShipping = $derived(session.can('orders:shipping'));
 	const shippingEditable = $derived(order ? isShippingEditable(order.status) : false);
-	const noteDirty = $derived(!!order && staffNote !== (order.staffNote ?? ''));
+	const noteDirty = $derived(!!order && staffNote !== serverNote);
 
 	async function openStatus(target: OrderStatus) {
 		statusTarget = target;
@@ -84,20 +69,11 @@
 	async function saveNote(event: SubmitEvent) {
 		event.preventDefault();
 		if (!order || savingNote) return;
-		savingNote = true;
 		try {
-			const res = await unwrap(
-				api().PUT('/v1/admin/orders/{id}/notes', {
-					params: { path: { id: order.id } },
-					body: { staffNote: staffNote.slice(0, 5000) }
-				})
-			);
-			setOrder(res.data);
+			await saveNoteMutation.mutateAsync({ id: order.id, staffNote: staffNote.slice(0, 5000) });
 			toast.success(m.od_note_saved());
 		} catch (error) {
 			toastError(error, m.od_note_failed());
-		} finally {
-			savingNote = false;
 		}
 	}
 
@@ -132,12 +108,12 @@
 		<Icon name="left" size={16} />{m.od_back()}
 	</a>
 
-	{#if loading && !order}
-		<LoadState loading />
-	{:else if notFound}
+	{#if notFound}
 		<p class="card p-10 text-center text-slate-600">{m.od_not_found()}</p>
-	{:else if loadError || !order}
-		<LoadState error={loadError} onretry={() => load(page.params.id ?? '')} />
+	{:else if loadError}
+		<LoadState error={loadError} onretry={() => orderQuery.refetch()} />
+	{:else if !order}
+		<LoadState loading />
 	{:else}
 		<PageHeader
 			title={m.od_title({ number: order.number })}
@@ -340,13 +316,7 @@
 			</div>
 		</div>
 
-		<StatusDialog
-			bind:this={statusDialog}
-			bind:open={statusOpen}
-			{order}
-			target={statusTarget}
-			onupdated={setOrder}
-		/>
-		<AddressDialog bind:this={addressDialog} bind:open={addressOpen} {order} onupdated={setOrder} />
+		<StatusDialog bind:this={statusDialog} bind:open={statusOpen} {order} target={statusTarget} />
+		<AddressDialog bind:this={addressDialog} bind:open={addressOpen} {order} />
 	{/if}
 </RequirePermission>

@@ -1,15 +1,14 @@
 <script lang="ts">
-	import type { AuditEntry, PageMeta } from '@atcreations/api-types';
-	import { untrack } from 'svelte';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, unwrap } from '$lib/api';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
 	import { formatDateTime } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages.js';
+	import { auditListQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { readInt, readString, withParams } from '$lib/utils/query';
 
@@ -34,39 +33,18 @@
 		};
 	});
 
-	let entries = $state<AuditEntry[]>([]);
-	let meta = $state<PageMeta | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let seq = 0;
-
-	async function load(f: typeof filters) {
-		const current = ++seq;
-		loading = true;
-		loadError = null;
-		try {
-			const res = await unwrap(
-				api().GET('/v1/admin/audit', {
-					params: {
-						query: { page: f.page, pageSize: f.pageSize, resource: f.resource || undefined }
-					}
-				})
-			);
-			if (current !== seq) return;
-			entries = res.data;
-			meta = res.meta;
-		} catch (error) {
-			if (current === seq) loadError = error;
-		} finally {
-			if (current === seq) loading = false;
-		}
-	}
-
-	$effect(() => {
-		const f = filters;
-		if (!session.can('audit:read')) return;
-		untrack(() => load(f));
-	});
+	const auditQuery = createQuery(() => ({
+		...auditListQuery({
+			page: filters.page,
+			pageSize: filters.pageSize,
+			resource: filters.resource || undefined
+		}),
+		placeholderData: keepPreviousData,
+		enabled: session.can('audit:read')
+	}));
+	const entries = $derived(auditQuery.data?.data ?? []);
+	const meta = $derived(auditQuery.data?.meta ?? null);
+	const showError = $derived(auditQuery.isError && !auditQuery.data);
 
 	function navigate(changes: Record<string, string | number | null | undefined>) {
 		// Same page, only the query string changes (built from page.url).
@@ -100,16 +78,25 @@
 		</select>
 	</div>
 
-	<section class="overflow-hidden card" aria-busy={loading}>
-		{#if loadError}
-			<LoadState error={loadError} fallback={m.audit_load_failed()} onretry={() => load(filters)} />
-		{:else if loading && entries.length === 0}
+	<section class="overflow-hidden card" aria-busy={auditQuery.isFetching}>
+		{#if showError}
+			<LoadState
+				error={auditQuery.error}
+				fallback={m.audit_load_failed()}
+				onretry={() => auditQuery.refetch()}
+			/>
+		{:else if auditQuery.isPending}
 			<LoadState loading />
 		{:else if entries.length === 0}
 			<p class="p-10 text-center text-slate-500">{m.audit_none()}</p>
 		{:else}
 			<div class="overflow-x-auto">
-				<table class={['w-full min-w-[720px] text-left text-sm', loading && 'opacity-60']}>
+				<table
+					class={[
+						'w-full min-w-[720px] text-left text-sm',
+						auditQuery.isPlaceholderData && 'opacity-60'
+					]}
+				>
 					<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
 						<tr>
 							<th scope="col" class="px-4 py-3">{m.audit_col_time()}</th>
@@ -140,7 +127,7 @@
 				</table>
 			</div>
 		{/if}
-		{#if meta && !loadError}
+		{#if meta && !showError}
 			<Pagination
 				{meta}
 				pageSizes={[...PAGE_SIZES]}

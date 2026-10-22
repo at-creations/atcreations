@@ -1,76 +1,58 @@
 <script lang="ts">
-	import type { Order, Product } from '@atcreations/api-types';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { resolve } from '$app/paths';
-	import { api, unwrap } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import { formatDateTime, localized } from '$lib/i18n';
 	import { safeImageUrl } from '$lib/links';
 	import { m } from '$lib/paraglide/messages.js';
+	import { orderListQuery, productListQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { formatCAD } from '$lib/utils/money';
 
 	const session = getAdminSession();
 	const canOrders = $derived(session.can('orders:read'));
 
-	type Stat = number | null | 'error';
-	let totalProducts = $state<Stat>(null);
-	let published = $state<Stat>(null);
-	let drafts = $state<Stat>(null);
-	let pendingOrders = $state<Stat>(null);
-	let lowStock = $state<Product[] | null | 'error'>(null);
-	let recentOrders = $state<Order[] | null | 'error'>(null);
+	const total = (res: { meta: { total: number } }) => res.meta.total;
 
-	async function count(status?: 'published' | 'draft'): Promise<number> {
-		const res = await unwrap(
-			api().GET('/v1/admin/products', {
-				params: { query: { pageSize: 1, ...(status ? { status } : {}) } }
-			})
-		);
-		return res.meta.total;
-	}
-
-	function settle<T>(promise: Promise<T>, set: (value: T | 'error') => void) {
-		promise.then(set, () => set('error'));
-	}
-
-	$effect(() => {
-		settle(count(), (v) => (totalProducts = v));
-		settle(count('published'), (v) => (published = v));
-		settle(count('draft'), (v) => (drafts = v));
-		settle(
-			unwrap(
-				api().GET('/v1/admin/products', { params: { query: { sort: 'stock_asc', pageSize: 5 } } })
-			).then((r) => r.data),
-			(v) => (lowStock = v)
-		);
-		if (canOrders) {
-			settle(
-				unwrap(
-					api().GET('/v1/admin/orders', { params: { query: { status: 'pending', pageSize: 1 } } })
-				).then((r) => r.meta.total),
-				(v) => (pendingOrders = v)
-			);
-			settle(
-				unwrap(
-					api().GET('/v1/admin/orders', { params: { query: { sort: 'newest', pageSize: 5 } } })
-				).then((r) => r.data),
-				(v) => (recentOrders = v)
-			);
-		}
-	});
+	const totalProducts = createQuery(() => ({
+		...productListQuery({ pageSize: 1 }),
+		select: total
+	}));
+	const published = createQuery(() => ({
+		...productListQuery({ pageSize: 1, status: 'published' }),
+		select: total
+	}));
+	const drafts = createQuery(() => ({
+		...productListQuery({ pageSize: 1, status: 'draft' }),
+		select: total
+	}));
+	const lowStock = createQuery(() => ({
+		...productListQuery({ sort: 'stock_asc', pageSize: 5 }),
+		select: (res) => res.data
+	}));
+	const pendingOrders = createQuery(() => ({
+		...orderListQuery({ status: 'pending', pageSize: 1 }),
+		select: total,
+		enabled: canOrders
+	}));
+	const recentOrders = createQuery(() => ({
+		...orderListQuery({ sort: 'newest', pageSize: 5 }),
+		select: (res) => res.data,
+		enabled: canOrders
+	}));
 
 	const displayName = $derived(session.me?.name || session.me?.email || '');
 </script>
 
-{#snippet stat(value: Stat)}
-	{#if value === null}
-		<span class="inline-block h-8 w-12 animate-pulse rounded bg-slate-200"></span>
-	{:else if value === 'error'}
+{#snippet stat(query: { isError: boolean; data: number | undefined })}
+	{#if query.isError && query.data === undefined}
 		<span class="text-slate-400">—</span>
+	{:else if query.data === undefined}
+		<span class="inline-block h-8 w-12 animate-pulse rounded bg-slate-200"></span>
 	{:else}
-		{value}
+		{query.data}
 	{/if}
 {/snippet}
 
@@ -135,15 +117,15 @@
 				>{m.dash_view_all()}</a
 			>
 		</header>
-		{#if lowStock === null}
-			<p class="p-5 text-sm text-slate-500">{m.common_loading()}</p>
-		{:else if lowStock === 'error'}
+		{#if lowStock.isPending}
+			<p class="p-5 text-sm text-slate-500" role="status">{m.common_loading()}</p>
+		{:else if lowStock.isError}
 			<p class="p-5 text-sm text-red-600">{m.products_load_failed()}</p>
-		{:else if lowStock.length === 0}
+		{:else if lowStock.data.length === 0}
 			<p class="p-5 text-sm text-slate-500">{m.dash_no_products()}</p>
 		{:else}
 			<ul class="divide-y divide-slate-100">
-				{#each lowStock as product (product.id)}
+				{#each lowStock.data as product (product.id)}
 					{@const cover = safeImageUrl(product.images[0]?.url)}
 					<li>
 						<a
@@ -185,15 +167,15 @@
 					>{m.dash_view_all()}</a
 				>
 			</header>
-			{#if recentOrders === null}
-				<p class="p-5 text-sm text-slate-500">{m.common_loading()}</p>
-			{:else if recentOrders === 'error'}
+			{#if recentOrders.isPending}
+				<p class="p-5 text-sm text-slate-500" role="status">{m.common_loading()}</p>
+			{:else if recentOrders.isError}
 				<p class="p-5 text-sm text-red-600">{m.orders_load_failed()}</p>
-			{:else if recentOrders.length === 0}
+			{:else if recentOrders.data.length === 0}
 				<p class="p-5 text-sm text-slate-500">{m.dash_no_orders()}</p>
 			{:else}
 				<ul class="divide-y divide-slate-100">
-					{#each recentOrders as order (order.id)}
+					{#each recentOrders.data as order (order.id)}
 						<li>
 							<a
 								href={resolve(`/orders/${order.id}`)}

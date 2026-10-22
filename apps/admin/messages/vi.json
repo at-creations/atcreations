@@ -452,5 +452,10 @@
 	"audit_res_order": "Đơn hàng",
 	"audit_res_staff": "Nhân viên",
 	"audit_res_invitation": "Lời mời",
-	"audit_res_store": "Thông tin cửa hàng"
+	"audit_res_store": "Thông tin cửa hàng",
+	"pf_conflict_title": "Sản phẩm đã bị thay đổi",
+	"pf_conflict_message": "Sản phẩm này đã được người khác cập nhật (hoặc tồn kho đã thay đổi) sau khi bạn mở. Tải lại phiên bản mới nhất? Các thay đổi chưa lưu sẽ bị huỷ.",
+	"pf_conflict_reload": "Tải lại bản mới nhất",
+	"pf_conflict_reloaded": "Đã tải phiên bản mới nhất của sản phẩm.",
+	"staff_invitations_load_failed": "Không thể tải danh sách lời mời đang chờ."
 }

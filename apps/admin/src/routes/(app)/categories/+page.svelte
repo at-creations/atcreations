@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Category } from '@atcreations/api-types';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { tick } from 'svelte';
-	import { api, unwrap, uploadWithProgress } from '$lib/api';
 	import CategoryDialog from '$lib/components/categories/CategoryDialog.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
@@ -10,6 +10,11 @@
 	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import {
+		categoriesQuery,
+		createCategoryImageMutation,
+		createDeleteCategoryMutation
+	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
@@ -18,9 +23,11 @@
 	const session = getAdminSession();
 	const canWrite = $derived(session.can('categories:write'));
 
-	let categories = $state<Category[]>([]);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
+	const categoriesList = createQuery(() => categoriesQuery());
+	const deleteCategory = createDeleteCategoryMutation();
+	const categoryImage = createCategoryImageMutation();
+	const categories = $derived(categoriesList.data ?? []);
+
 	let dialogOpen = $state(false);
 	let editing = $state<Category | null>(null);
 	let dialog = $state<ReturnType<typeof CategoryDialog>>();
@@ -33,33 +40,11 @@
 		categories.reduce((max, c) => Math.max(max, c.sortOrder), -10) + 10
 	);
 
-	async function load() {
-		loading = true;
-		loadError = null;
-		try {
-			categories = (await unwrap(api().GET('/v1/admin/categories'))).data;
-		} catch (error) {
-			loadError = error;
-		} finally {
-			loading = false;
-		}
-	}
-
-	$effect(() => {
-		load();
-	});
-
 	async function openDialog(category: Category | null) {
 		editing = category;
 		await tick();
 		dialog?.reset();
 		dialogOpen = true;
-	}
-
-	function upsert(category: Category) {
-		const index = categories.findIndex((c) => c.id === category.id);
-		if (index === -1) categories.push(category);
-		else categories[index] = category;
 	}
 
 	async function remove(category: Category) {
@@ -72,10 +57,7 @@
 		});
 		if (!ok) return;
 		try {
-			await unwrap(
-				api().DELETE('/v1/admin/categories/{id}', { params: { path: { id: category.id } } })
-			);
-			categories = categories.filter((c) => c.id !== category.id);
+			await deleteCategory.mutateAsync(category.id);
 			toast.success(m.cat_deleted({ name }));
 		} catch (error) {
 			toastError(error, m.cat_delete_failed());
@@ -93,14 +75,7 @@
 		}
 		busyImage = category.id;
 		try {
-			const form = new FormData();
-			form.append('file', file, file.name);
-			const updated = await uploadWithProgress<Category>(
-				'PUT',
-				`/v1/admin/categories/${encodeURIComponent(category.id)}/image`,
-				form
-			);
-			if (updated) upsert(updated);
+			await categoryImage.mutateAsync({ id: category.id, file });
 			toast.success(m.cat_image_uploaded());
 		} catch (error) {
 			toastError(error, m.cat_image_upload_failed());
@@ -119,10 +94,7 @@
 		if (!ok) return;
 		busyImage = category.id;
 		try {
-			const res = await unwrap(
-				api().DELETE('/v1/admin/categories/{id}/image', { params: { path: { id: category.id } } })
-			);
-			upsert(res.data);
+			await categoryImage.mutateAsync({ id: category.id });
 			toast.success(m.cat_image_removed());
 		} catch (error) {
 			toastError(error, m.cat_image_remove_failed());
@@ -142,11 +114,15 @@
 	{/snippet}
 </PageHeader>
 
-{#if loading && categories.length === 0}
+{#if categoriesList.isPending}
 	<div class="card"><LoadState loading /></div>
-{:else if loadError}
+{:else if categoriesList.isError && !categoriesList.data}
 	<div class="card">
-		<LoadState error={loadError} fallback={m.cat_load_failed()} onretry={load} />
+		<LoadState
+			error={categoriesList.error}
+			fallback={m.cat_load_failed()}
+			onretry={() => categoriesList.refetch()}
+		/>
 	</div>
 {:else if sorted.length === 0}
 	<p class="card p-10 text-center text-slate-500">{m.cat_none()}</p>
@@ -246,10 +222,4 @@
 	</ul>
 {/if}
 
-<CategoryDialog
-	bind:this={dialog}
-	bind:open={dialogOpen}
-	category={editing}
-	{nextSortOrder}
-	onsaved={upsert}
-/>
+<CategoryDialog bind:this={dialog} bind:open={dialogOpen} category={editing} {nextSortOrder} />

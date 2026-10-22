@@ -1,14 +1,16 @@
 <script lang="ts">
 	import type { Category, Product, ProductInput, ProductStatus } from '@atcreations/api-types';
+	import { useQueryClient } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import { ApiError, fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LangTabs from '$lib/components/LangTabs.svelte';
 	import { localized, priceErrorMessage, productStatusLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createSaveProductMutation, reloadProduct } from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
@@ -22,10 +24,13 @@
 	}: {
 		product?: Product;
 		categories: Category[];
-		onsaved: (product: Product, created: boolean) => void | Promise<void>;
+		/** Called after a successful save; the product cache is already updated. */
+		onsaved?: (product: Product, created: boolean) => void | Promise<void>;
 	} = $props();
 
 	const session = getAdminSession();
+	const queryClient = useQueryClient();
+	const save = createSaveProductMutation();
 	const readOnly = $derived(!session.can('products:write'));
 	const uid = $props.id();
 	const STATUSES: readonly ProductStatus[] = ['draft', 'published', 'archived'];
@@ -67,10 +72,38 @@
 	let slugTouched = $state(untrack(() => !!product));
 	let errors = $state<Record<string, string>>({});
 	let tab = $state<'en' | 'vi'>('en');
-	let saving = $state(false);
 	let bypassGuard = false;
+	/** The `version` the current form values are based on (sent for optimistic concurrency). */
+	let baseVersion = $state(untrack(() => product?.version));
+	const saving = $derived(save.isPending);
 
 	const dirty = $derived(JSON.stringify(values) !== snapshot);
+
+	function resetTo(p: Product) {
+		const next = toValues(p);
+		values = next;
+		snapshot = JSON.stringify(next);
+		baseVersion = p.version;
+		slugTouched = true;
+	}
+
+	// The cached product can change underneath the form: our own image operations, a refetch
+	// (window focus, invalidation) or a reload after a 409.
+	$effect(() => {
+		const next = product;
+		const isDirty = dirty;
+		if (!next || next.version === baseVersion) return;
+		untrack(() => {
+			if (JSON.stringify(toValues(next)) === snapshot) {
+				// Only non-form fields changed (e.g. images): adopt the new version.
+				baseVersion = next.version;
+			} else if (!isDirty) {
+				// Changed elsewhere and nothing to lose: show the latest values.
+				resetTo(next);
+			}
+			// Otherwise keep the old version so saving surfaces a 409 instead of overwriting.
+		});
+	});
 	const parsedPrice = $derived(parseDollars(values.price));
 	const finalPreview = $derived.by(() => {
 		if (!parsedPrice.ok || parsedPrice.cents === null) return null;
@@ -121,7 +154,7 @@
 			categoryIds: values.categoryIds,
 			// Optimistic concurrency: the API answers 409 if the product (or its
 			// stock, via an order) changed since it was loaded.
-			...(product ? { version: product.version } : {})
+			...(product ? { version: baseVersion } : {})
 		};
 	}
 
@@ -137,29 +170,43 @@
 			toast.error(m.validation_fix_errors());
 			return;
 		}
-		saving = true;
+		let saved: Product;
 		try {
-			const res = product
-				? await unwrap(
-						api().PUT('/v1/admin/products/{id}', { params: { path: { id: product.id } }, body })
-					)
-				: await unwrap(api().POST('/v1/admin/products', { body }));
-			const saved = res.data;
-			const next = toValues(saved);
-			values = next;
-			snapshot = JSON.stringify(next);
-			slugTouched = true;
-			toast.success(product ? m.pf_updated() : m.pf_created());
-			bypassGuard = true;
-			await onsaved(saved, !product);
-			bypassGuard = false;
+			saved = await save.mutateAsync({ id: product?.id, body });
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			if (errors['name.en'] || errors['description.en']) tab = 'en';
 			else if (errors['name.vi'] || errors['description.vi']) tab = 'vi';
 			toastError(error, m.pf_save_failed());
+			if (product && error instanceof ApiError && error.status === 409)
+				void offerReload(product.id);
+			return;
+		}
+		resetTo(saved);
+		toast.success(product ? m.pf_updated() : m.pf_created());
+		bypassGuard = true;
+		try {
+			await onsaved?.(saved, !product);
 		} finally {
-			saving = false;
+			bypassGuard = false;
+		}
+	}
+
+	/** 409: the product changed since it was loaded. Offer to discard local edits and reload. */
+	async function offerReload(id: string) {
+		const ok = await confirmAction({
+			title: m.pf_conflict_title(),
+			message: m.pf_conflict_message(),
+			confirmLabel: m.pf_conflict_reload(),
+			danger: true
+		});
+		if (!ok) return;
+		try {
+			resetTo(await reloadProduct(queryClient, id));
+			errors = {};
+			toast.info(m.pf_conflict_reloaded());
+		} catch (error) {
+			toastError(error);
 		}
 	}
 

@@ -1,10 +1,9 @@
 <script lang="ts">
-	import type { Category, PageMeta, Product, ProductStatus } from '@atcreations/api-types';
-	import { untrack } from 'svelte';
+	import type { Product, ProductStatus } from '@atcreations/api-types';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { api, unwrap } from '$lib/api';
 	import CategoryBadges from '$lib/components/CategoryBadges.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
@@ -15,6 +14,12 @@
 	import { safeImageUrl, storefrontProductUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import {
+		categoriesQuery,
+		createDeleteProductMutation,
+		productListQuery,
+		type ProductListParams
+	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
@@ -67,57 +72,31 @@
 		};
 	});
 
-	let products = $state<Product[]>([]);
-	let meta = $state<PageMeta | null>(null);
-	let loading = $state(true);
-	let loadError = $state<unknown>(null);
-	let categories = $state<Category[]>([]);
-	let seq = 0;
-
-	async function load(f: typeof filters) {
-		const current = ++seq;
-		loading = true;
-		loadError = null;
-		try {
-			const res = await unwrap(
-				api().GET('/v1/admin/products', {
-					params: {
-						query: {
-							page: f.page,
-							pageSize: f.pageSize,
-							q: f.q || undefined,
-							status: f.status,
-							category: f.category && f.category !== UNCATEGORIZED ? f.category : undefined,
-							uncategorized: f.category === UNCATEGORIZED ? true : undefined,
-							featured: f.featured === undefined ? undefined : f.featured === 'true',
-							minPrice: f.minPrice ?? undefined,
-							maxPrice: f.maxPrice ?? undefined,
-							sort: f.sort
-						}
-					}
-				})
-			);
-			if (current !== seq) return;
-			products = res.data;
-			meta = res.meta;
-		} catch (error) {
-			if (current === seq) loadError = error;
-		} finally {
-			if (current === seq) loading = false;
-		}
-	}
-
-	$effect(() => {
-		const f = filters;
-		untrack(() => load(f));
+	const listParams = $derived<ProductListParams>({
+		page: filters.page,
+		pageSize: filters.pageSize,
+		q: filters.q || undefined,
+		status: filters.status,
+		category: filters.category && filters.category !== UNCATEGORIZED ? filters.category : undefined,
+		uncategorized: filters.category === UNCATEGORIZED ? true : undefined,
+		featured: filters.featured === undefined ? undefined : filters.featured === 'true',
+		minPrice: filters.minPrice ?? undefined,
+		maxPrice: filters.maxPrice ?? undefined,
+		sort: filters.sort
 	});
 
-	$effect(() => {
-		unwrap(api().GET('/v1/admin/categories')).then(
-			(res) => (categories = res.data),
-			() => (categories = [])
-		);
-	});
+	// keepPreviousData: paging/filtering keeps the current rows (dimmed) instead of flashing.
+	const productsQuery = createQuery(() => ({
+		...productListQuery(listParams),
+		placeholderData: keepPreviousData
+	}));
+	const categoriesList = createQuery(() => categoriesQuery());
+	const deleteProduct = createDeleteProductMutation();
+
+	const products = $derived(productsQuery.data?.data ?? []);
+	const meta = $derived(productsQuery.data?.meta ?? null);
+	const categories = $derived(categoriesList.data ?? []);
+	const showError = $derived(productsQuery.isError && !productsQuery.data);
 
 	function navigate(changes: Record<string, string | number | null | undefined>) {
 		// Same page, only the query string changes (built from page.url).
@@ -184,12 +163,9 @@
 		});
 		if (!ok) return;
 		try {
-			await unwrap(
-				api().DELETE('/v1/admin/products/{id}', { params: { path: { id: product.id } } })
-			);
+			await deleteProduct.mutateAsync(product.id);
 			toast.success(m.products_deleted());
 			if (products.length === 1 && filters.page > 1) navigate({ page: filters.page - 1 });
-			else load(filters);
 		} catch (error) {
 			toastError(error, m.products_delete_failed());
 		}
@@ -387,20 +363,25 @@
 	</div>
 </section>
 
-<section class="overflow-hidden card" aria-busy={loading}>
-	{#if loadError}
+<section class="overflow-hidden card" aria-busy={productsQuery.isFetching}>
+	{#if showError}
 		<LoadState
-			error={loadError}
+			error={productsQuery.error}
 			fallback={m.products_load_failed()}
-			onretry={() => load(filters)}
+			onretry={() => productsQuery.refetch()}
 		/>
-	{:else if loading && products.length === 0}
+	{:else if productsQuery.isPending}
 		<LoadState loading />
 	{:else if products.length === 0}
 		<p class="p-10 text-center text-slate-500">{m.products_no_results()}</p>
 	{:else}
 		<!-- Table (≥ xl) -->
-		<table class={['hidden w-full text-left text-sm xl:table', loading && 'opacity-60']}>
+		<table
+			class={[
+				'hidden w-full text-left text-sm xl:table',
+				productsQuery.isPlaceholderData && 'opacity-60'
+			]}
+		>
 			<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
 				<tr>
 					<th scope="col" class="px-4 py-3">{m.products_col_product()}</th>
@@ -450,7 +431,12 @@
 		</table>
 
 		<!-- Cards (< xl) -->
-		<ul class={['divide-y divide-slate-100 xl:hidden', loading && 'opacity-60']}>
+		<ul
+			class={[
+				'divide-y divide-slate-100 xl:hidden',
+				productsQuery.isPlaceholderData && 'opacity-60'
+			]}
+		>
 			{#each products as product (product.id)}
 				<li class="flex gap-3 p-4">
 					{@render thumb(product, 'size-16')}
@@ -487,7 +473,7 @@
 			{/each}
 		</ul>
 	{/if}
-	{#if meta && !loadError}
+	{#if meta && !showError}
 		<Pagination
 			{meta}
 			pageSizes={[...PAGE_SIZES]}

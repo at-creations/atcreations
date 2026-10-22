@@ -1,25 +1,24 @@
 <script lang="ts">
 	import type { Category, CategoryInput } from '@atcreations/api-types';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import { fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import LangTabs from '$lib/components/LangTabs.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createSaveCategoryMutation } from '$lib/queries';
 	import { toast } from '$lib/state/toast.svelte';
 	import { isValidSlug, slugify } from '$lib/utils/slug';
 
 	let {
 		open = $bindable(false),
 		category,
-		nextSortOrder = 0,
-		onsaved
+		nextSortOrder = 0
 	}: {
 		open?: boolean;
 		/** Category to edit; omit to create a new one. */
 		category?: Category | null;
 		nextSortOrder?: number;
-		onsaved: (category: Category) => void;
 	} = $props();
 
 	const uid = $props.id();
@@ -33,7 +32,8 @@
 	let slugTouched = $state(false);
 	let tab = $state<'en' | 'vi'>('en');
 	let errors = $state<Record<string, string>>({});
-	let saving = $state(false);
+	const save = createSaveCategoryMutation();
+	const saving = $derived(save.isPending);
 
 	/** Reset the form whenever the dialog is opened. */
 	export function reset() {
@@ -76,26 +76,16 @@
 		if (saving) return;
 		const body = validate();
 		if (!body) return;
-		saving = true;
 		try {
-			const res = category
-				? await unwrap(
-						api().PUT('/v1/admin/categories/{id}', { params: { path: { id: category.id } }, body })
-					)
-				: await unwrap(api().POST('/v1/admin/categories', { body }));
+			const saved = await save.mutateAsync({ id: category?.id, body });
 			toast.success(
-				category
-					? m.cat_updated({ name: res.data.name.en })
-					: m.cat_created({ name: res.data.name.en })
+				category ? m.cat_updated({ name: saved.name.en }) : m.cat_created({ name: saved.name.en })
 			);
 			open = false;
-			onsaved(res.data);
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			if (errors['name.en'] || errors['description.en']) tab = 'en';
 			toastError(error, m.cat_save_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>

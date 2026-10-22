@@ -1,30 +1,16 @@
 <script lang="ts">
-	import type { Category } from '@atcreations/api-types';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { api, unwrap } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import ProductForm from '$lib/components/products/ProductForm.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
 	import { m } from '$lib/paraglide/messages.js';
+	import { categoriesQuery } from '$lib/queries';
 
-	let categories = $state<Category[] | null>(null);
-	let loadError = $state<unknown>(null);
-
-	async function loadCategories() {
-		loadError = null;
-		try {
-			categories = (await unwrap(api().GET('/v1/admin/categories'))).data;
-		} catch (error) {
-			loadError = error;
-		}
-	}
-
-	$effect(() => {
-		loadCategories();
-	});
+	const categories = createQuery(() => categoriesQuery());
 </script>
 
 <RequirePermission permission="products:write">
@@ -35,15 +21,19 @@
 		<Icon name="left" size={16} />{m.nav_products()}
 	</a>
 	<PageHeader title={m.pf_title_add()} />
-	{#if loadError}
-		<LoadState error={loadError} fallback={m.cat_load_failed()} onretry={loadCategories} />
-	{:else if !categories}
+	{#if categories.isPending}
 		<LoadState loading />
+	{:else if categories.isError && !categories.data}
+		<LoadState
+			error={categories.error}
+			fallback={m.cat_load_failed()}
+			onretry={() => categories.refetch()}
+		/>
 	{:else}
 		<ProductForm
-			{categories}
+			categories={categories.data ?? []}
 			onsaved={async (product) => {
-				// Step 2: continue to the edit page where images can be uploaded.
+				// Step 2: continue to the edit page where images can be uploaded (already cached).
 				await goto(resolve(`/products/${product.id}`), { replaceState: true });
 			}}
 		/>

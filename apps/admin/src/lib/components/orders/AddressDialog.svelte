@@ -1,18 +1,15 @@
 <script lang="ts">
 	import type { Address, Order } from '@atcreations/api-types';
 	import type { FullAutoFill } from 'svelte/elements';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import { fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createOrderShippingMutation } from '$lib/queries';
 	import { toast } from '$lib/state/toast.svelte';
 
-	let {
-		open = $bindable(false),
-		order,
-		onupdated
-	}: { open?: boolean; order: Order; onupdated: (order: Order) => void } = $props();
+	let { open = $bindable(false), order }: { open?: boolean; order: Order } = $props();
 
 	const uid = $props.id();
 	type Key = keyof Address;
@@ -28,7 +25,8 @@
 	};
 	let form = $state<Address>({ ...empty });
 	let errors = $state<Record<string, string>>({});
-	let saving = $state(false);
+	const saveShipping = createOrderShippingMutation();
+	const saving = $derived(saveShipping.isPending);
 
 	export function reset() {
 		form = { ...empty, ...order.shipping };
@@ -77,19 +75,13 @@
 		if (Object.keys(e).length) return;
 		if (!body.line2) delete body.line2;
 		if (!body.region) delete body.region;
-		saving = true;
 		try {
-			const res = await unwrap(
-				api().PUT('/v1/admin/orders/{id}/shipping', { params: { path: { id: order.id } }, body })
-			);
+			await saveShipping.mutateAsync({ id: order.id, address: body });
 			toast.success(m.od_address_saved());
 			open = false;
-			onupdated(res.data);
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			toastError(error, m.od_address_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>

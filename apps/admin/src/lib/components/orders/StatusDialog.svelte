@@ -1,31 +1,31 @@
 <script lang="ts">
 	import type { Order, OrderStatus } from '@atcreations/api-types';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import { fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { orderStatusLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createOrderStatusMutation } from '$lib/queries';
 	import { toast } from '$lib/state/toast.svelte';
 
 	let {
 		open = $bindable(false),
 		order,
-		target,
-		onupdated
+		target
 	}: {
 		open?: boolean;
 		order: Order;
 		target: OrderStatus | null;
-		onupdated: (order: Order) => void;
 	} = $props();
 
 	const uid = $props.id();
 	let note = $state('');
 	let trackingNumber = $state('');
 	let notify = $state(true);
-	let saving = $state(false);
+	const changeStatus = createOrderStatusMutation();
+	const saving = $derived(changeStatus.isPending);
 	let errors = $state<Record<string, string>>({});
 
 	export function reset() {
@@ -43,29 +43,21 @@
 		if (trackingNumber.length > 100) e.trackingNumber = m.validation_too_long({ max: 100 });
 		errors = e;
 		if (Object.keys(e).length) return;
-		saving = true;
 		try {
-			const res = await unwrap(
-				api().POST('/v1/admin/orders/{id}/status', {
-					params: { path: { id: order.id } },
-					body: {
-						status: target,
-						...(note.trim() ? { note: note.trim() } : {}),
-						...(target === 'shipped' && trackingNumber.trim()
-							? { trackingNumber: trackingNumber.trim() }
-							: {}),
-						notify
-					}
-				})
-			);
+			await changeStatus.mutateAsync({
+				id: order.id,
+				status: target,
+				...(note.trim() ? { note: note.trim() } : {}),
+				...(target === 'shipped' && trackingNumber.trim()
+					? { trackingNumber: trackingNumber.trim() }
+					: {}),
+				notify
+			});
 			toast.success(m.od_status_updated());
 			open = false;
-			onupdated(res.data);
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			toastError(error, m.od_status_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>

@@ -1,11 +1,18 @@
 <script lang="ts">
 	import type { Image, Product } from '@atcreations/api-types';
-	import { api, unwrap, uploadWithProgress } from '$lib/api';
+	import { useQueryClient } from '@tanstack/svelte-query';
+	import { uploadWithProgress } from '$lib/api';
 	import Icon from '$lib/components/Icon.svelte';
 	import { describeError } from '$lib/i18n';
 	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import {
+		createRemoveImageMutation,
+		createReorderImagesMutation,
+		keys,
+		putProduct
+	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
@@ -17,9 +24,13 @@
 		moveItem
 	} from '$lib/utils/files';
 
-	let { product = $bindable() }: { product: Product } = $props();
+	/** The cached product; every change goes back through the query cache. */
+	let { product }: { product: Product } = $props();
 
 	const session = getAdminSession();
+	const queryClient = useQueryClient();
+	const reorder = createReorderImagesMutation();
+	const removeImg = createRemoveImageMutation();
 	const canEdit = $derived(session.can('products:write'));
 	const uid = $props.id();
 
@@ -34,7 +45,7 @@
 
 	let queue = $state<QueueItem[]>([]);
 	let uploading = $state(false);
-	let reordering = $state(false);
+	const reordering = $derived(reorder.isPending);
 	let dragIndex = $state<number | null>(null);
 	let dropIndex = $state<number | null>(null);
 	let dropActive = $state(false);
@@ -99,7 +110,9 @@
 						form,
 						(fraction) => (item!.progress = Math.round(fraction * 100))
 					);
-					if (updated) product = updated;
+					// Upload stays imperative (XHR progress); the response is the canonical product.
+					if (updated) await putProduct(queryClient, updated);
+					else await queryClient.invalidateQueries({ queryKey: keys.products.detail(product.id) });
 					item.status = 'done';
 					item.progress = 100;
 					ok++;
@@ -117,23 +130,12 @@
 	}
 
 	async function saveOrder(next: Image[], focusIndex?: number) {
-		const previous = product.images;
-		product = { ...product, images: next };
-		reordering = true;
 		try {
-			const res = await unwrap(
-				api().PUT('/v1/admin/products/{id}/images/order', {
-					params: { path: { id: product.id } },
-					body: { imageIds: next.map((i) => i.id) }
-				})
-			);
-			product = res.data;
+			// Optimistic in the cache; rolled back by the mutation on failure.
+			await reorder.mutateAsync({ id: product.id, images: next });
 			announcement = m.img_order_saved();
 		} catch (error) {
-			product = { ...product, images: previous };
 			toastError(error, m.img_order_failed());
-		} finally {
-			reordering = false;
 		}
 		if (focusIndex !== undefined) {
 			document.getElementById(`${uid}-img-${focusIndex}`)?.focus();
@@ -154,12 +156,7 @@
 		});
 		if (!ok) return;
 		try {
-			const res = await unwrap(
-				api().DELETE('/v1/admin/products/{id}/images/{imageId}', {
-					params: { path: { id: product.id, imageId: image.id } }
-				})
-			);
-			product = res.data;
+			await removeImg.mutateAsync({ id: product.id, imageId: image.id });
 			toast.success(m.img_removed());
 		} catch (error) {
 			toastError(error, m.img_remove_failed());

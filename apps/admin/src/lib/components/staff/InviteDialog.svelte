@@ -1,26 +1,25 @@
 <script lang="ts">
-	import type { Invitation, Role } from '@atcreations/api-types';
-	import { api, fieldErrorMap, unwrap } from '$lib/api';
+	import type { Role } from '@atcreations/api-types';
+	import { fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { roleLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
+	import { createInviteMutation } from '$lib/queries';
 	import { toast } from '$lib/state/toast.svelte';
 	import { ROLES } from '$lib/utils/permissions';
 	import RoleLadder from './RoleLadder.svelte';
 
-	let {
-		open = $bindable(false),
-		oninvited
-	}: { open?: boolean; oninvited: (invitation: Invitation) => void } = $props();
+	let { open = $bindable(false) }: { open?: boolean } = $props();
 
 	const uid = $props.id();
 	let email = $state('');
 	let role = $state<Role>('staff');
 	let errors = $state<Record<string, string>>({});
-	let saving = $state(false);
+	const invite = createInviteMutation();
+	const saving = $derived(invite.isPending);
 
 	export function reset() {
 		email = '';
@@ -36,19 +35,13 @@
 		const value = email.trim();
 		errors = EMAIL.test(value) ? {} : { email: m.validation_email() };
 		if (errors.email) return;
-		saving = true;
 		try {
-			const res = await unwrap(
-				api().POST('/v1/admin/staff/invitations', { body: { email: value, role } })
-			);
+			await invite.mutateAsync({ email: value, role });
 			toast.success(m.staff_invite_sent({ email: value }));
 			open = false;
-			oninvited(res.data);
 		} catch (error) {
 			errors = fieldErrorMap(error);
 			toastError(error, m.staff_invite_failed());
-		} finally {
-			saving = false;
 		}
 	}
 </script>
