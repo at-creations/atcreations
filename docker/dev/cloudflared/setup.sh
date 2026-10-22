@@ -27,6 +27,18 @@ API_HOST="${API_HOST:-dev-api.$ZONE}"
 cd "$(dirname "$0")"
 REPO_ROOT="$(cd ../../.. && pwd)"
 
+if ! docker info >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+Docker is not reachable from this shell. Start Docker Desktop, then:
+  - Windows (PowerShell): `bash` there is usually WSL, which cannot see
+    Docker Desktop unless WSL integration is enabled for your distro.
+    Run the script with Git Bash instead:
+      & "C:\Program Files\Git\bin\bash.exe" docker/dev/cloudflared/setup.sh
+  - WSL: enable Docker Desktop → Settings → Resources → WSL integration.
+EOF
+  exit 1
+fi
+
 # Never let the dev tunnel take over production names.
 for host in "$STOREFRONT_HOST" "$ADMIN_HOST" "$API_HOST"; do
   case "$host" in

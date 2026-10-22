@@ -36,6 +36,8 @@ bash docker/dev/cloudflared/setup.sh   # once: login, tunnel, DNS routes, config
 pnpm dev:stack:tunnel                  # dev stack + cloudflared
 ```
 
+On Windows run the setup from Git Bash, or from PowerShell with `& "C:\Program Files\Git\bin\bash.exe" docker/dev/cloudflared/setup.sh` (plain `bash` in PowerShell is WSL, which cannot reach Docker Desktop unless WSL integration is enabled).
+
 | Service | URL |
 |---|---|
 | Storefront | https://dev.atcreations.ca |
