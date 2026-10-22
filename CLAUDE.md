@@ -6,17 +6,18 @@ Storefront (catalogue) + admin dashboard + API for AT Creations. Read `docs/ARCH
 
 | Path | What | Stack |
 |---|---|---|
-| `apps/api` | HTTP API, `openapi.yaml` is the contract | Go 1.27, chi, mongo-driver v2, clerk-sdk-go v2, R2 via S3 API |
+| `apps/api` | HTTP API, `openapi.yaml` is the contract | Go 1.27, chi, mongo-driver v2, go-redis v9, clerk-sdk-go v2, R2 via S3 API |
 | `apps/storefront` | Public catalogue (SSR, en/vi) | SvelteKit 2, Svelte 5 runes, Tailwind 4, Paraglide |
-| `apps/admin` | Staff dashboard | SvelteKit 2, Svelte 5, svelte-clerk |
+| `apps/admin` | Staff dashboard | SvelteKit 2, Svelte 5, svelte-clerk, TanStack Query v6 |
 | `packages/api-types` | TS types generated from `openapi.yaml` | openapi-typescript |
-| `deploy/` | Self-hosted production stack | Docker Compose, Caddy, MongoDB 8 replica set |
+| `deploy/` | Self-hosted production stack | Docker Compose, Caddy, MongoDB 8 replica set, Redis 8 |
 
 ## Commands
 
 ```bash
 pnpm install                     # JS deps (pnpm workspace)
-docker compose -f docker-compose.dev.yml up -d   # local MongoDB replica set
+pnpm dev:stack                   # whole dev stack in Docker with live reload
+docker compose -f docker-compose.dev.yml up -d mongo redis   # only the databases
 cd apps/api && go run ./cmd/api  # API on :8080 (needs apps/api/.env)
 pnpm dev:storefront / pnpm dev:admin
 pnpm gen:api                     # after ANY change to apps/api/openapi.yaml
@@ -30,6 +31,8 @@ pnpm -r check && pnpm -r lint && pnpm -r test && pnpm -r build
 - **Never trust the client for money, roles or status.** Prices/totals are computed server-side; roles come only from Clerk `publicMetadata.role`.
 - **Every admin mutation** goes through `auth.Require(<permission>)` and records `audit.Record(...)`.
 - **Decode JSON with `httpx.DecodeJSON`** (rejects unknown fields → no mass assignment). Escape user text in regexes with `mongox.ContainsPattern`. Never build Mongo filters from raw maps of request data.
+- **Catalogue/store writes must invalidate the Redis cache** (`s.cache.Invalidate(ctx, redisx.NSCatalog)` / `NSStore`). Redis holds only ephemeral data and every use must fail open.
+- **Admin data fetching goes through TanStack Query** (`apps/admin/src/lib/queries`): use the query-key factory and invalidate/set queries after mutations.
 - **Uploads only via `media.Process`** (sniffs, size/pixel limits, re-encodes). Object keys are random; never use client filenames.
 - Svelte: runes only; never `{@html}` with API data; run the Svelte autofixer on changed components.
 - Secrets live in `.env` / `deploy/env/*.env` / `deploy/secrets/` — never read, print or commit them.

@@ -14,7 +14,7 @@
 | Stock check-then-decrement, no transaction, no restock on cancel | Overselling, drift | Conditional `$inc` inside a MongoDB transaction; cancel restocks atomically; CAS on status |
 | Login/user responses leaked encrypted API-key blobs; product lists leaked 768-float embeddings | Data exposure | DTOs map only public fields; API keys and embeddings removed |
 | Uploads trusted client MIME type and original filename; page media overwrote by filename | Stored XSS / polyglots, overwrites | Format sniffed from bytes, size and pixel caps (decompression bombs), re-encoded (strips EXIF/GPS), random object keys |
-| Redis bound to `0.0.0.0`, `protected-mode no`, port published, default password | Remote takeover | Redis removed; MongoDB has auth + keyfile, runs on an `internal` Docker network with no published port |
+| Redis bound to `0.0.0.0`, `protected-mode no`, port published, default password | Remote takeover | Redis on an `internal` network with no published port, `protected-mode yes`, the default user disabled, a dedicated ACL user denied `@dangerous` commands (FLUSHALL, CONFIG, KEYS, ...), runs unprivileged on a read-only filesystem, no persistence; MongoDB likewise has auth + keyfile and no published port |
 | CSRF bound to `req.ip`; rate limits keyed on proxy IP or spoofable `X-Forwarded-For` | Bypass / shared buckets | No cookies → no CSRF surface; client IP resolved only through configured trusted proxies (right-most untrusted hop) |
 | Weak default secrets (`JWT_SECRET="secret"`), no startup validation | Forgeable tokens | No first-party JWTs; config refuses to start with missing/unsafe values (`config.validate`) |
 | Public `/health` exposed env, memory, uptime | Recon | `/healthz` and `/readyz` return only status |
@@ -35,7 +35,9 @@
 
 **Client IP** — The API trusts `X-Forwarded-For` only from Caddy and the storefront (fixed container IPs), never the whole Docker subnet. If the host serves IPv6, enable IPv6 on the `edge` network (or disable Docker's userland proxy) so IPv6 visitors are not all seen as the Docker gateway.
 
-**Rate limits** (per real client IP) — global 300/min; view counter 30/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
+**Redis** — Holds only ephemeral data (response cache, rate-limit counters, identity cache, locks); nothing in it is authoritative. Every use fails open safely: the cache is bypassed and the rate limiter falls back to in-memory counters if Redis is unreachable. Cache invalidation bumps a namespace version on every catalogue/store write, so stale data is never served after a change.
+
+**Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
 
 **Data** — Least-privilege Mongo user (`readWrite` on the app DB only); visitor fingerprints are keyed hashes; audit log of every admin mutation; nightly `mongodump` with retention (copy off-host).
 

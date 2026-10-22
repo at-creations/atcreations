@@ -1,6 +1,6 @@
 # Deployment (self-hosted, single host)
 
-Everything — Caddy, storefront, admin, API and MongoDB — runs on one Linux host with Docker Compose. MongoDB is self-hosted (no Atlas) as a single-node replica set with authentication.
+Everything — Caddy, storefront, admin, API, MongoDB and Redis — runs on one Linux host with Docker Compose. MongoDB is self-hosted (no Atlas) as a single-node replica set with authentication. Redis is ephemeral (cache, rate limits, locks) with an ACL user and no persistence.
 
 ## First-time setup
 
@@ -9,7 +9,7 @@ Everything — Caddy, storefront, admin, API and MongoDB — runs on one Linux h
 3. Copy this `deploy/` directory to `/opt/atcreations/deploy` and:
    ```bash
    cp .env.example .env              # domains, ACME email, registry, TAG
-   ./scripts/init-secrets.sh         # generates Mongo keyfile/passwords, env files, hash pepper
+   ./scripts/init-secrets.sh         # generates Mongo keyfile/passwords, Redis password, env files, hash pepper
    $EDITOR env/api.env env/admin.env env/storefront.env   # Clerk, R2, SendGrid values
    docker login ghcr.io              # read-only token (read:packages)
    docker compose pull && docker compose up -d --wait

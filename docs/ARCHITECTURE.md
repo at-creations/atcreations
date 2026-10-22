@@ -19,6 +19,7 @@
 | **storefront** (`apps/storefront`) | Bilingual (en/vi) catalogue. Server-side renders every page by calling the API over the internal network, so pages have real SEO metadata. |
 | **admin** (`apps/admin`) | Staff dashboard. Clerk handles sign-in (invitation-only); the browser calls the API with a short-lived Clerk session token. |
 | **MongoDB** | Self-hosted, single-node replica set (needed for transactions), auth + keyfile, no published port. |
+| **Redis** | Self-hosted, ephemeral (no persistence). Public response cache, shared rate-limit counters, Clerk identity cache and distributed locks. ACL user without dangerous commands, internal network only. |
 | **R2** | New bucket; objects are content-addressed by random keys and served via the CDN domain. |
 
 ## API design
@@ -44,6 +45,7 @@
 | `audit` | Append-only audit log of admin mutations (2-year TTL) |
 | `media` | Image validation/re-encoding, S3/R2 storage |
 | `jobs` | Interval jobs guarded by MongoDB leases (multi-replica safe) |
+| `platform/redisx` | Redis connection, versioned response cache middleware, distributed lock |
 
 ## Roles and permissions
 
@@ -93,3 +95,28 @@ pending → confirmed → processing → shipped → delivered → completed
    ↓          ↓            ↓                     ↓           ↓
 cancelled  cancelled   cancelled              refunded    refunded
 ```
+
+## Caching
+
+| Layer | What | Invalidation |
+|---|---|---|
+| Redis response cache (API) | `GET /v1/categories*`, `/v1/products*` (5 min), `/v1/store-info` (1 h) | Every catalogue write (products, categories, images, stock changes from orders, the recent-views job) bumps the `catalog` namespace version; store-info writes bump `store`. Old entries are orphaned instantly and expire by TTL. Responses carry `X-Cache: HIT/MISS`. |
+| HTTP `Cache-Control` | Public catalogue responses `max-age=60` | Time-based |
+| TanStack Query (admin) | Every admin API read, keyed by a typed query-key factory | Mutations invalidate or set the affected queries; data is cleared on sign-out |
+
+The storefront renders on the server (SEO), so it relies on the API cache rather than a client-side query cache.
+
+## Local development stack
+
+`docker-compose.dev.yml` runs MongoDB, Redis, the API, the storefront and the admin with live reload (`pnpm dev:stack`, which is `docker compose ... up --build --watch`):
+
+| Service | URL | Reload |
+|---|---|---|
+| storefront | http://localhost:5173 | Vite HMR (source synced into the container) |
+| admin | http://localhost:5174 | Vite HMR |
+| api | http://localhost:8080 | Rebuilt and restarted on Go file changes |
+| mongo | 127.0.0.1:27017 | — |
+| redis | 127.0.0.1:6379 (password `dev-redis-password`) | — |
+| mongo-express (optional, `--profile tools`) | http://localhost:8088 (dev/dev) | — |
+
+Real development keys go in `apps/api/.env` and `apps/admin/.env`; both are optional for the compose stack, which starts with placeholders (sign-in and image uploads need real Clerk/R2 keys).

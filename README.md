@@ -4,9 +4,9 @@ Monorepo for the AT Creations store: a bilingual (EN/VI) product catalogue, a st
 
 | App | Path | Stack |
 |---|---|---|
-| API | [`apps/api`](apps/api) | Go 1.27 · chi · MongoDB 8 · Clerk · Cloudflare R2 |
+| API | [`apps/api`](apps/api) | Go 1.27 · chi · MongoDB 8 · Redis 8 · Clerk · Cloudflare R2 |
 | Storefront | [`apps/storefront`](apps/storefront) | SvelteKit 2 · Svelte 5 · Tailwind 4 · Paraglide |
-| Admin | [`apps/admin`](apps/admin) | SvelteKit 2 · Svelte 5 · Clerk (`svelte-clerk`) |
+| Admin | [`apps/admin`](apps/admin) | SvelteKit 2 · Svelte 5 · Clerk (`svelte-clerk`) · TanStack Query |
 | API types | [`packages/api-types`](packages/api-types) | Generated from [`openapi.yaml`](apps/api/openapi.yaml) |
 
 Docs: [Architecture](docs/ARCHITECTURE.md) · [Security model](docs/SECURITY.md) · [Deployment](deploy/README.md) · [Data migration](docs/MIGRATION.md)
@@ -18,9 +18,20 @@ Docs: [Architecture](docs/ARCHITECTURE.md) · [Security model](docs/SECURITY.md)
 
 ## Local development
 
+### Everything in Docker (recommended)
+
+```bash
+pnpm dev:stack        # MongoDB, Redis, API, storefront, admin — with live reload
+pnpm dev:stack:down   # stop (add -v to also wipe the dev database)
+```
+
+Storefront http://localhost:5173 · Admin http://localhost:5174 · API http://localhost:8080 (`/readyz`). Put real Clerk/R2 development keys in `apps/api/.env` and `apps/admin/.env` to sign in and upload images. Ports can be changed with `API_PORT`, `STOREFRONT_PORT`, `ADMIN_PORT`, `MONGO_PORT`, `REDIS_PORT`. Optional DB UI: `docker compose -f docker-compose.dev.yml --profile tools up -d mongo-express` → http://localhost:8088 (dev/dev).
+
+### Apps on the host
+
 ```bash
 pnpm install
-docker compose -f docker-compose.dev.yml up -d        # MongoDB replica set on 127.0.0.1:27017
+docker compose -f docker-compose.dev.yml up -d mongo redis   # 127.0.0.1:27017 and :6379
 
 cp apps/api/.env.example apps/api/.env                # fill in Clerk + R2 values
 cp apps/storefront/.env.example apps/storefront/.env
