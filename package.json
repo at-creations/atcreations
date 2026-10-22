@@ -8,6 +8,8 @@
   "scripts": {
     "dev:storefront": "pnpm --filter @atcreations/storefront dev",
     "dev:admin": "pnpm --filter @atcreations/admin dev",
+    "dev:stack": "docker compose -f docker-compose.dev.yml up --build --watch",
+    "dev:stack:down": "docker compose -f docker-compose.dev.yml down",
     "gen:api": "pnpm --filter @atcreations/api-types gen",
     "build": "pnpm -r build",
     "check": "pnpm -r check",

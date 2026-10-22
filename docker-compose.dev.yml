@@ -1,18 +1,144 @@
-# Local development dependencies only (the apps run on the host with hot reload).
-# MongoDB runs as a single-node replica set so transactions work like production.
-# It is bound to 127.0.0.1 only and has no auth — never expose this file's setup.
+# Local development stack: MongoDB + Redis + API + storefront + admin, with live reload.
+#
+#   pnpm dev:stack            # = docker compose -f docker-compose.dev.yml up --build --watch
+#   pnpm dev:stack:down       # stop (add -v to also wipe the dev database)
+#
+# Only MongoDB, to run the apps on the host instead:
+#   docker compose -f docker-compose.dev.yml up -d mongo
+#
+# Every port is bound to 127.0.0.1. MongoDB has no auth here — this file is
+# for local development only; production uses deploy/docker-compose.yml.
+#
+# Host ports can be changed with API_PORT, STOREFRONT_PORT, ADMIN_PORT,
+# MONGO_PORT, REDIS_PORT (e.g. in a root .env file) if something else already uses them.
 name: atcreations-dev
+
+x-web-watch-ignore: &web-watch-ignore
+  - node_modules/
+  - .svelte-kit/
+  - build/
+  - src/lib/paraglide/
+  - .env
 
 services:
   mongo:
     image: mongo:8.0
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    ports: ["127.0.0.1:27017:27017"]
+    ports: ["127.0.0.1:${MONGO_PORT:-27017}:27017"]
     volumes: [mongo_dev:/data/db]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }"]
       interval: 5s
       retries: 20
+
+  redis:
+    image: redis:8.2-alpine
+    # Dev only: simple password, no persistence, bound to 127.0.0.1.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "dev-redis-password", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-lru"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "dev-redis-password", "ping"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: { context: ./apps/api }
+    env_file:
+      - path: ./docker/dev/api.env
+      - path: ./apps/api/.env # optional: real dev keys (Clerk, R2, SendGrid)
+        required: false
+    environment:
+      # Container-specific values always win over the env files.
+      HTTP_ADDR: ":8080"
+      MONGO_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+      REDIS_URL: redis://:dev-redis-password@redis:6379/0
+      CORS_ALLOWED_ORIGINS: http://localhost:${STOREFRONT_PORT:-5173},http://localhost:${ADMIN_PORT:-5174}
+      CLERK_AUTHORIZED_PARTIES: http://localhost:${ADMIN_PORT:-5174}
+      TRUSTED_PROXIES: 172.16.0.0/12 # the storefront forwards visitor IPs for SSR calls
+    ports: ["127.0.0.1:${API_PORT:-8080}:8080"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    develop:
+      watch:
+        # Go builds in seconds: rebuild and restart the container on change.
+        - action: rebuild
+          path: ./apps/api
+          ignore: [bin/, .env, openapi.yaml]
+
+  storefront:
+    build:
+      context: .
+      dockerfile: docker/dev/web.Dockerfile
+      args: { APP: storefront }
+    environment:
+      PORT: "5173"
+      PUBLIC_SITE_URL: http://localhost:${STOREFRONT_PORT:-5173}
+      PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+      API_INTERNAL_URL: http://api:8080
+      PUBLIC_ASSET_BASE_URL: ${PUBLIC_ASSET_BASE_URL:-https://cdn.atcreations.ca/site}
+    ports: ["127.0.0.1:${STOREFRONT_PORT:-5173}:5173"]
+    depends_on:
+      api: { condition: service_healthy }
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/storefront
+          target: /repo/apps/storefront
+          ignore: *web-watch-ignore
+        - action: sync
+          path: ./packages/api-types/src
+          target: /repo/packages/api-types/src
+        - action: rebuild
+          path: ./apps/storefront/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  admin:
+    build:
+      context: .
+      dockerfile: docker/dev/web.Dockerfile
+      args: { APP: admin }
+    env_file:
+      - path: ./apps/admin/.env # Clerk keys (pk_test_/sk_test_) — required to sign in
+        required: false
+    environment:
+      PORT: "5173"
+      PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+      PUBLIC_STOREFRONT_URL: http://localhost:${STOREFRONT_PORT:-5173}
+      # Placeholders so the dev server starts without keys; apps/admin/.env overrides.
+      PUBLIC_CLERK_PUBLISHABLE_KEY: ${PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_Y2xlcmsuZXhhbXBsZS5jb20k}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_placeholder}
+    ports: ["127.0.0.1:${ADMIN_PORT:-5174}:5173"]
+    depends_on:
+      api: { condition: service_healthy }
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/admin
+          target: /repo/apps/admin
+          ignore: *web-watch-ignore
+        - action: sync
+          path: ./packages/api-types/src
+          target: /repo/packages/api-types/src
+        - action: rebuild
+          path: ./apps/admin/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  # Optional database UI: docker compose -f docker-compose.dev.yml --profile tools up -d
+  mongo-express:
+    profiles: [tools]
+    image: mongo-express:1.0.2
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+      ME_CONFIG_BASICAUTH_USERNAME: dev
+      ME_CONFIG_BASICAUTH_PASSWORD: dev
+    ports: ["127.0.0.1:${MONGO_UI_PORT:-8088}:8081"]
+    depends_on:
+      mongo: { condition: service_healthy }
 
 volumes:
   mongo_dev:
