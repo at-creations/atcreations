@@ -457,5 +457,9 @@
 	"pf_conflict_message": "Sản phẩm này đã được người khác cập nhật (hoặc tồn kho đã thay đổi) sau khi bạn mở. Tải lại phiên bản mới nhất? Các thay đổi chưa lưu sẽ bị huỷ.",
 	"pf_conflict_reload": "Tải lại bản mới nhất",
 	"pf_conflict_reloaded": "Đã tải phiên bản mới nhất của sản phẩm.",
-	"staff_invitations_load_failed": "Không thể tải danh sách lời mời đang chờ."
+	"staff_invitations_load_failed": "Không thể tải danh sách lời mời đang chờ.",
+	"signup_title": "Chấp nhận lời mời",
+	"signup_subtitle": "Tạo tài khoản nhân viên để truy cập trang quản trị.",
+	"signup_invite_only": "Tài khoản nhân viên chỉ được tạo qua lời mời. Hãy dùng liên kết trong email mời, hoặc đăng nhập nếu bạn đã có tài khoản.",
+	"signup_go_to_signin": "Đến trang đăng nhập"
 }

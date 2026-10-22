@@ -25,14 +25,14 @@ Scripts (run with `pnpm --filter @atcreations/admin <script>`): `dev`, `build`, 
 
 ## Clerk dashboard
 
-1. **Restrict sign-ups** — _Configure → Restrictions_: set sign-up mode to **Restricted** (invitation only). The app only renders `<SignIn/>`; staff are invited from the Staff page (`POST /v1/admin/staff/invitations`).
-2. **Paths** — sign-in URL `/sign-in`, after sign-out `/sign-in`.
+1. **Restrict sign-ups** — _Configure → User & authentication → Access mode_ (older dashboards: _Restrictions_): set sign-up mode to **Restricted** (invitation only). Keep _Sign-up with email_ enabled so invitees can create their account. Staff are invited from the Staff page (`POST /v1/admin/staff/invitations`); the invitation email links to `/sign-up?__clerk_ticket=…`, where `<SignUp/>` redeems the ticket. Without a ticket `/sign-up` only shows an "invitation only" notice, and Clerk rejects ticketless sign-ups in Restricted mode anyway.
+2. **Paths** — sign-in URL `/sign-in`, sign-up URL `/sign-up`, after sign-out `/sign-in`. The API's `CLERK_INVITE_REDIRECT_URL` must point to `<admin origin>/sign-up`.
 3. **First admin** — create/invite your own account, then in _Users → (you) → Metadata_ set public metadata to:
    ```json
    { "role": "admin" }
    ```
    Roles are `staff`, `manager` and `admin`. A signed-in account without a role sees a "No access" page.
-4. **Session token** — _Configure → Sessions → Customize session token_:
+4. **Session token** — _Configure → Sessions → Customize session token_ (keys are under _Instance → API keys_):
    ```json
    {
    	"role": "{{user.public_metadata.role}}",

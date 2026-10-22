@@ -13,7 +13,7 @@
 	<title>{m.app_title()}</title>
 </svelte:head>
 
-<ClerkProvider signInUrl="/sign-in" afterSignOutUrl="/sign-in">
+<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" afterSignOutUrl="/sign-in">
 	{@render children()}
 </ClerkProvider>
 

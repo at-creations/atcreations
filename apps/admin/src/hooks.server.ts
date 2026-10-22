@@ -6,12 +6,14 @@ import { paraglideMiddleware } from '$lib/paraglide/server.js';
 import { safeRedirectPath } from '$lib/utils/redirect';
 
 const PUBLIC_PREFIX = '/sign-in';
+/** Routes reachable without a session: sign-in and invitation sign-up. */
+const PUBLIC_PREFIXES = [PUBLIC_PREFIX, '/sign-up'];
 
 function isPublicPath(pathname: string): boolean {
-	return pathname === PUBLIC_PREFIX || pathname.startsWith(`${PUBLIC_PREFIX}/`);
+	return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-/** Every route except /sign-in/* requires a Clerk session. Roles are checked by the API. */
+/** Every route except /sign-in/* and /sign-up/* requires a Clerk session. Roles are checked by the API. */
 const authGuard: Handle = async ({ event, resolve }) => {
 	const { pathname, search } = event.url;
 	if (!isPublicPath(pathname)) {

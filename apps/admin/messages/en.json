@@ -457,5 +457,9 @@
 	"pf_conflict_message": "This product was updated by someone else (or its stock changed) after you opened it. Reload the latest version? Your unsaved edits will be discarded.",
 	"pf_conflict_reload": "Reload latest",
 	"pf_conflict_reloaded": "Loaded the latest version of the product.",
-	"staff_invitations_load_failed": "Could not load pending invitations."
+	"staff_invitations_load_failed": "Could not load pending invitations.",
+	"signup_title": "Accept your invitation",
+	"signup_subtitle": "Create your staff account to access the admin panel.",
+	"signup_invite_only": "Staff accounts are by invitation only. Use the link in your invitation email, or sign in if you already have an account.",
+	"signup_go_to_signin": "Go to sign in"
 }
