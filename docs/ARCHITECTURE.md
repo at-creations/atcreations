@@ -119,4 +119,6 @@ The storefront renders on the server (SEO), so it relies on the API cache rather
 | redis | 127.0.0.1:6379 (password `dev-redis-password`) | — |
 | mongo-express (optional, `--profile tools`) | http://localhost:8088 (dev/dev) | — |
 
+With `pnpm dev:stack:tunnel`, a Cloudflare Tunnel (`docker/dev/cloudflared/`) also publishes the storefront, admin and API on `dev.`, `dev-admin.` and `dev-api.atcreations.ca`; the apps then use those public URLs (CORS, Clerk authorized parties, canonical URLs, Vite host allow-list) via the `DEV_*` variables that `setup.sh` writes to the root `.env`.
+
 Real development keys go in `apps/api/.env` and `apps/admin/.env`; both are optional for the compose stack, which starts with placeholders (sign-in and image uploads need real Clerk/R2 keys).

@@ -17,6 +17,7 @@ Storefront (catalogue) + admin dashboard + API for AT Creations. Read `docs/ARCH
 ```bash
 pnpm install                     # JS deps (pnpm workspace)
 pnpm dev:stack                   # whole dev stack in Docker with live reload
+pnpm dev:stack:tunnel            # same + Cloudflare Tunnel on dev*.atcreations.ca (setup: docker/dev/cloudflared/setup.sh)
 docker compose -f docker-compose.dev.yml up -d mongo redis   # only the databases
 cd apps/api && go run ./cmd/api  # API on :8080 (needs apps/api/.env)
 pnpm dev:storefront / pnpm dev:admin
@@ -35,7 +36,7 @@ pnpm -r check && pnpm -r lint && pnpm -r test && pnpm -r build
 - **Admin data fetching goes through TanStack Query** (`apps/admin/src/lib/queries`): use the query-key factory and invalidate/set queries after mutations.
 - **Uploads only via `media.Process`** (sniffs, size/pixel limits, re-encodes). Object keys are random; never use client filenames.
 - Svelte: runes only; never `{@html}` with API data; run the Svelte autofixer on changed components.
-- Secrets live in `.env` / `deploy/env/*.env` / `deploy/secrets/` — never read, print or commit them.
+- Secrets live in `.env` / `deploy/env/*.env` / `deploy/secrets/` / `docker/dev/cloudflared/` (cert.pem, credentials.json) — never read, print or commit them.
 - The `clerk-backend-api` skill executes live API calls (including deletes). Only use it with a development (`sk_test_`) key and confirm before any mutation.
 - Commit messages: Conventional Commits (`feat(api): ...`).
 

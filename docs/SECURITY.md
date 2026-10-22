@@ -37,6 +37,8 @@
 
 **Redis** — Holds only ephemeral data (response cache, rate-limit counters, identity cache, locks); nothing in it is authoritative. Every use fails open safely: the cache is bypassed and the rate limiter falls back to in-memory counters if Redis is unreachable. Cache invalidation bumps a namespace version on every catalogue/store write, so stale data is never served after a change.
 
+**Dev tunnel** — The optional Cloudflare Tunnel for the dev stack routes only the storefront, admin and API (catch-all 404); databases are never exposed. Tunnel credentials and the account certificate are git-ignored and excluded from Docker build contexts; the container gets only the tunnel credentials, read-only, with all capabilities dropped. The dev hostnames should sit behind Cloudflare Access. Vite only answers the tunnel hostnames it is told about (`VITE_ALLOWED_HOSTS`), which blocks DNS-rebinding against the dev servers.
+
 **Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
 
 **Data** — Least-privilege Mongo user (`readWrite` on the app DB only); visitor fingerprints are keyed hashes; audit log of every admin mutation; nightly `mongodump` with retention (copy off-host).

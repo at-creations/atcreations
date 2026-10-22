@@ -27,6 +27,27 @@ pnpm dev:stack:down   # stop (add -v to also wipe the dev database)
 
 Storefront http://localhost:5173 · Admin http://localhost:5174 · API http://localhost:8080 (`/readyz`). Put real Clerk/R2 development keys in `apps/api/.env` and `apps/admin/.env` to sign in and upload images. Ports can be changed with `API_PORT`, `STOREFRONT_PORT`, `ADMIN_PORT`, `MONGO_PORT`, `REDIS_PORT`. Optional DB UI: `docker compose -f docker-compose.dev.yml --profile tools up -d mongo-express` → http://localhost:8088 (dev/dev).
 
+### Public dev URLs (Cloudflare Tunnel)
+
+Expose the dev stack on `*.atcreations.ca` — useful for testing on phones, sharing previews and Clerk flows on a real domain:
+
+```bash
+bash docker/dev/cloudflared/setup.sh   # once: login, tunnel, DNS routes, config, root .env
+pnpm dev:stack:tunnel                  # dev stack + cloudflared
+```
+
+| Service | URL |
+|---|---|
+| Storefront | https://dev.atcreations.ca |
+| Admin | https://dev-admin.atcreations.ca |
+| API | https://dev-api.atcreations.ca |
+
+- Runs cloudflared in Docker; nothing to install. Override names with `ZONE`, `TUNNEL_NAME`, `STOREFRONT_HOST`, `ADMIN_HOST`, `API_HOST`. Names are single-level (`dev-admin.`) because Cloudflare's free certificate covers `*.atcreations.ca` but not `*.dev.atcreations.ca`; production names (`atcreations.ca`, `www.`, `admin.`, `api.`, `cdn.`) are refused.
+- Config and credentials live in `docker/dev/cloudflared/` and are git-ignored (`cert.pem`, `credentials.json`, `config.yml`). Only `credentials.json` and `config.yml` are mounted into the container; `cert.pem` is only needed to run `setup.sh` again.
+- Only the storefront, admin and API are routed. MongoDB, Redis and mongo-express are never exposed; other hostnames return 404.
+- **Protect the hostnames with Cloudflare Access** (Zero Trust → Access → Applications → self-hosted, allow only your team's emails). The dev servers are Vite development servers and are not hardened for the public internet. `config.example.yml` shows how to make cloudflared verify the Access token too.
+- `localhost` keeps working while the tunnel is up. Delete the `DEV_*` lines from the root `.env` to go back to localhost-only URLs.
+
 ### Apps on the host
 
 ```bash
