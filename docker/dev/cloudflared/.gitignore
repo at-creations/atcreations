@@ -1,0 +1,8 @@
+# Tunnel secrets and generated config stay local:
+#  - cert.pem          account-level origin certificate (can manage tunnels/DNS)
+#  - credentials.json  tunnel credentials (anyone with it can serve your hostnames)
+#  - config.yml        rendered config with your tunnel id
+*
+!.gitignore
+!config.example.yml
+!setup.sh

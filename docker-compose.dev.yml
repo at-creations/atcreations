@@ -11,6 +11,12 @@
 #
 # Host ports can be changed with API_PORT, STOREFRONT_PORT, ADMIN_PORT,
 # MONGO_PORT, REDIS_PORT (e.g. in a root .env file) if something else already uses them.
+#
+# Public hostnames via Cloudflare Tunnel (optional):
+#   bash docker/dev/cloudflared/setup.sh   # once: tunnel, DNS routes, config, .env
+#   pnpm dev:stack:tunnel                  # = up with --profile tunnel
+# setup.sh writes DEV_STOREFRONT_URL / DEV_ADMIN_URL / DEV_API_URL /
+# DEV_TUNNEL_HOSTS to the root .env; without them everything stays on localhost.
 name: atcreations-dev
 
 x-web-watch-ignore: &web-watch-ignore
@@ -52,9 +58,14 @@ services:
       HTTP_ADDR: ":8080"
       MONGO_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
       REDIS_URL: redis://:dev-redis-password@redis:6379/0
-      CORS_ALLOWED_ORIGINS: http://localhost:${STOREFRONT_PORT:-5173},http://localhost:${ADMIN_PORT:-5174}
-      CLERK_AUTHORIZED_PARTIES: http://localhost:${ADMIN_PORT:-5174}
-      TRUSTED_PROXIES: 172.16.0.0/12 # the storefront forwards visitor IPs for SSR calls
+      # Localhost origins always work; tunnel origins are added when configured
+      # (empty list entries are ignored by the API).
+      CORS_ALLOWED_ORIGINS: http://localhost:${STOREFRONT_PORT:-5173},http://localhost:${ADMIN_PORT:-5174},${DEV_STOREFRONT_URL:-},${DEV_ADMIN_URL:-}
+      CLERK_AUTHORIZED_PARTIES: http://localhost:${ADMIN_PORT:-5174},${DEV_ADMIN_URL:-}
+      CLERK_INVITE_REDIRECT_URL: ${DEV_ADMIN_URL:-http://localhost:${ADMIN_PORT:-5174}}/sign-up
+      STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
+      # Docker networks only: cloudflared and the storefront set X-Forwarded-For.
+      TRUSTED_PROXIES: 172.16.0.0/12
     ports: ["127.0.0.1:${API_PORT:-8080}:8080"]
     read_only: true
     tmpfs: ["/tmp"]
@@ -75,9 +86,10 @@ services:
       args: { APP: storefront }
     environment:
       PORT: "5173"
-      PUBLIC_SITE_URL: http://localhost:${STOREFRONT_PORT:-5173}
-      PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+      PUBLIC_SITE_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
+      PUBLIC_API_URL: ${DEV_API_URL:-http://localhost:${API_PORT:-8080}}
       API_INTERNAL_URL: http://api:8080
+      VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
       PUBLIC_ASSET_BASE_URL: ${PUBLIC_ASSET_BASE_URL:-https://cdn.atcreations.ca/site}
     ports: ["127.0.0.1:${STOREFRONT_PORT:-5173}:5173"]
     depends_on:
@@ -102,15 +114,16 @@ services:
       dockerfile: docker/dev/web.Dockerfile
       args: { APP: admin }
     env_file:
-      - path: ./apps/admin/.env # Clerk keys (pk_test_/sk_test_) — required to sign in
+      - path: ./docker/dev/admin.env # placeholder keys so the dev server starts
+      - path: ./apps/admin/.env # your Clerk keys (pk_test_/sk_test_) — required to sign in
         required: false
     environment:
+      # Container-specific values; Clerk keys deliberately come only from the
+      # env files above (values here would override apps/admin/.env).
       PORT: "5173"
-      PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
-      PUBLIC_STOREFRONT_URL: http://localhost:${STOREFRONT_PORT:-5173}
-      # Placeholders so the dev server starts without keys; apps/admin/.env overrides.
-      PUBLIC_CLERK_PUBLISHABLE_KEY: ${PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_Y2xlcmsuZXhhbXBsZS5jb20k}
-      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_placeholder}
+      PUBLIC_API_URL: ${DEV_API_URL:-http://localhost:${API_PORT:-8080}}
+      PUBLIC_STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
+      VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
     ports: ["127.0.0.1:${ADMIN_PORT:-5174}:5173"]
     depends_on:
       api: { condition: service_healthy }
@@ -127,6 +140,21 @@ services:
           path: ./apps/admin/package.json
         - action: rebuild
           path: ./pnpm-lock.yaml
+
+  # Public dev hostnames (profile "tunnel"). Only the tunnel credentials are
+  # mounted; the account-level cert.pem from setup stays out of the container.
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:2026.10.1
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ./docker/dev/cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./docker/dev/cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    restart: unless-stopped
+    depends_on: [storefront, admin, api]
 
   # Optional database UI: docker compose -f docker-compose.dev.yml --profile tools up -d
   mongo-express:

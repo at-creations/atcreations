@@ -1,0 +1,28 @@
+# Cloudflare Tunnel for the dev stack (locally-managed tunnel).
+# setup.sh renders this into config.yml (git-ignored) with your tunnel id and
+# hostnames; edit config.yml, not this template, for local tweaks.
+#
+# Only the three web services are published. MongoDB, Redis and mongo-express
+# are never routed; anything else gets a 404 from the catch-all rule.
+tunnel: __TUNNEL_ID__
+credentials-file: /etc/cloudflared/credentials.json
+no-autoupdate: true
+
+ingress:
+  - hostname: __STOREFRONT_HOST__
+    service: http://storefront:5173
+  - hostname: __ADMIN_HOST__
+    service: http://admin:5173
+  - hostname: __API_HOST__
+    service: http://api:8080
+  - service: http_status:404
+
+# Recommended: protect these hostnames with a Cloudflare Access application
+# (Zero Trust → Access → Applications) and let cloudflared verify the Access
+# JWT at the origin too, so the dev servers are unreachable without login:
+#
+# originRequest:
+#   access:
+#     required: true
+#     teamName: <your-team>          # from <your-team>.cloudflareaccess.com
+#     audTag: [<application AUD tag>]

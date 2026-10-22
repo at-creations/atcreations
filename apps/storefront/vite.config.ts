@@ -3,7 +3,15 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
 
+// Extra Host headers the dev server accepts (e.g. Cloudflare Tunnel hostnames),
+// comma separated. Vite rejects unknown hosts to block DNS-rebinding attacks.
+const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? '')
+	.split(',')
+	.map((h) => h.trim())
+	.filter(Boolean);
+
 export default defineConfig({
+	server: { allowedHosts },
 	plugins: [
 		tailwindcss(),
 		sveltekit(),

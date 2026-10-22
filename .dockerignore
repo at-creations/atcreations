@@ -19,3 +19,4 @@ docs
 apps/api
 **/*.pem
 **/*.key
+docker/dev/cloudflared

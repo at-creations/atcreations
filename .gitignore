@@ -18,6 +18,7 @@ deploy/secrets/
 deploy/env/*.env
 deploy/.previous-tag
 backups/
+secrets/
 
 # Tooling
 .DS_Store
@@ -43,3 +44,9 @@ Thumbs.db
 .claude-flow/learning/
 .claude-flow/security/
 .claude-flow/agents/
+
+# Cloudflare Tunnel secrets for the dev stack (see docker/dev/cloudflared/.gitignore)
+docker/dev/cloudflared/*
+!docker/dev/cloudflared/.gitignore
+!docker/dev/cloudflared/config.example.yml
+!docker/dev/cloudflared/setup.sh
