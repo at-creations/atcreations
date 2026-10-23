@@ -48,7 +48,7 @@ services:
       retries: 20
 
   # S3-compatible object storage standing in for Cloudflare R2 in development.
-  # Console: http://localhost:9001 (atcreations-dev / dev-rustfs-secret-key).
+  # Console: http://localhost:9001/rustfs/console/ (atcreations-dev / dev-rustfs-secret-key).
   rustfs:
     image: rustfs/rustfs:1.0.3
     environment:

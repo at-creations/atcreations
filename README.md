@@ -25,7 +25,7 @@ pnpm dev:stack        # MongoDB, Redis, RustFS (S3), API, storefront, admin — 
 pnpm dev:stack:down   # stop (add -v to also wipe the dev database)
 ```
 
-Storefront http://localhost:5173 · Admin http://localhost:5174 · API http://localhost:8080 (`/readyz`). Put your Clerk development keys in `apps/api/.env` (`CLERK_SECRET_KEY`) and `apps/admin/.env` to sign in. Image uploads go to a local [RustFS](https://rustfs.com) bucket (console http://localhost:9001, `atcreations-dev` / `dev-rustfs-secret-key`); add `S3_*`/`CDN_BASE_URL` to `apps/api/.env` only to use a real R2 bucket instead. Ports can be changed with `API_PORT`, `STOREFRONT_PORT`, `ADMIN_PORT`, `MONGO_PORT`, `REDIS_PORT`. Optional DB UI: `docker compose -f docker-compose.dev.yml --profile tools up -d mongo-express` → http://localhost:8088 (dev/dev).
+Storefront http://localhost:5173 · Admin http://localhost:5174 · API http://localhost:8080 (`/readyz`). Put your Clerk development keys in `apps/api/.env` (`CLERK_SECRET_KEY`) and `apps/admin/.env` to sign in. Image uploads go to a local [RustFS](https://rustfs.com) bucket (console http://localhost:9001/rustfs/console/, `atcreations-dev` / `dev-rustfs-secret-key`); add `S3_*`/`CDN_BASE_URL` to `apps/api/.env` only to use a real R2 bucket instead. Ports can be changed with `API_PORT`, `STOREFRONT_PORT`, `ADMIN_PORT`, `MONGO_PORT`, `REDIS_PORT`. Optional DB UI: `docker compose -f docker-compose.dev.yml --profile tools up -d mongo-express` → http://localhost:8088 (dev/dev).
 
 ### Public dev URLs (Cloudflare Tunnel)
 

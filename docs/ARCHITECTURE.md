@@ -117,7 +117,7 @@ The storefront renders on the server (SEO), so it relies on the API cache rather
 | api | http://localhost:8080 | Rebuilt and restarted on Go file changes |
 | mongo | 127.0.0.1:27017 | — |
 | redis | 127.0.0.1:6379 (password `dev-redis-password`) | — |
-| rustfs (S3, stands in for R2) | API http://localhost:9000, console http://localhost:9001 (`atcreations-dev` / `dev-rustfs-secret-key`); bucket `atcreations-dev`, created by `rustfs-init` with public read for `products/*` and `categories/*` only | — |
+| rustfs (S3, stands in for R2) | API http://localhost:9000, console http://localhost:9001/rustfs/console/ (`atcreations-dev` / `dev-rustfs-secret-key`); bucket `atcreations-dev`, created by `rustfs-init` with public read for `products/*` and `categories/*` only | — |
 | mongo-express (optional, `--profile tools`) | http://localhost:8088 (dev/dev) | — |
 
 With `pnpm dev:stack:tunnel`, a Cloudflare Tunnel (`docker/dev/cloudflared/`) also publishes the storefront, admin and API on `dev.`, `dev-admin.` and `dev-api.atcreations.ca`; the apps then use those public URLs (CORS, Clerk authorized parties, canonical URLs, Vite host allow-list) via the `DEV_*` variables that `setup.sh` writes to the root `.env`.
