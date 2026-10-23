@@ -49,6 +49,12 @@
       "skillPath": "skills/golang-testing/SKILL.md",
       "computedHash": "31b691f568f4c00d8d7bedc65a38d9966d9f3d353712929a1a8805eaa3f88b00"
     },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "285eb6262b087638b0deea81d2c2a238639354ae2917a839a130f7a36bdc545b"
+    },
     "mongodb-connection": {
       "source": "mongodb/agent-skills",
       "sourceType": "github",
@@ -84,6 +90,24 @@
       "sourceType": "github",
       "skillPath": "plugins/claude/svelte/skills/svelte-core-bestpractices/SKILL.md",
       "computedHash": "3cd6c1f1a92b8bf52af8120e5cb3a93b5512f83b905fd902b895adafb7225456"
+    },
+    "sveltekit-data-flow": {
+      "source": "spences10/svelte-skills-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/svelte-skills/skills/sveltekit-data-flow/SKILL.md",
+      "computedHash": "816945d39e94402b66122ada509c1616bae82d57fdbdff66838ad685cecde988"
+    },
+    "sveltekit-structure": {
+      "source": "spences10/svelte-skills-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/svelte-skills/skills/sveltekit-structure/SKILL.md",
+      "computedHash": "eef66314ca437f13272afc3db7e149b0e39a8b734040d4b0affa01697352e511"
+    },
+    "tailwind-design-system": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend-mobile-development/skills/tailwind-design-system/SKILL.md",
+      "computedHash": "4e5bfe5af9b5da504752432dc45ed605af350cf1489a58419afad4123a514f89"
     },
     "web-design-guidelines": {
       "source": "vercel-labs/agent-skills",
