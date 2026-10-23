@@ -8,9 +8,13 @@ import {
 import { api, unwrap } from '$lib/api';
 import { keys, type OrderListParams } from './keys';
 
+/** How often order data is polled while the tab is visible: new orders arrive without a reload. */
+export const ORDERS_POLL_MS = 30_000;
+
 export function orderListQuery(params: OrderListParams) {
 	return queryOptions({
 		queryKey: keys.orders.list(params),
+		refetchInterval: ORDERS_POLL_MS,
 		queryFn: ({ signal }) =>
 			unwrap(api().GET('/v1/admin/orders', { params: { query: params }, signal }))
 	});
@@ -19,6 +23,7 @@ export function orderListQuery(params: OrderListParams) {
 export function orderDetailQuery(id: string) {
 	return queryOptions({
 		queryKey: keys.orders.detail(id),
+		refetchInterval: ORDERS_POLL_MS,
 		queryFn: async ({ signal }) =>
 			(await unwrap(api().GET('/v1/admin/orders/{id}', { params: { path: { id } }, signal }))).data
 	});
@@ -80,4 +85,12 @@ export function createOrderShippingMutation() {
 			).data,
 		onSuccess: (order) => putOrder(queryClient, order, false)
 	}));
+}
+
+/** Number of orders waiting for a decision (sidebar badge, dashboard). */
+export function pendingOrderCountQuery() {
+	return queryOptions({
+		...orderListQuery({ status: 'pending', pageSize: 1 }),
+		select: (res) => res.meta.total
+	});
 }

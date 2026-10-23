@@ -30,10 +30,13 @@ describe('createAdminQueryClient', () => {
 		const client = createAdminQueryClient();
 		const defaults = client.getDefaultOptions().queries;
 		expect(defaults?.staleTime).toBe(STALE_TIME);
-		expect(STALE_TIME).toBe(30_000);
+		expect(STALE_TIME).toBe(5_000);
 		expect(defaults?.gcTime).toBe(GC_TIME);
-		expect(GC_TIME).toBe(300_000);
+		expect(GC_TIME).toBe(600_000);
+		expect(defaults?.refetchOnMount).toBe(true);
 		expect(defaults?.refetchOnWindowFocus).toBe(true);
+		expect(defaults?.refetchOnReconnect).toBe(true);
+		expect(defaults?.refetchIntervalInBackground).toBe(false);
 		expect(defaults?.retry).toBe(shouldRetry);
 	});
 
