@@ -71,7 +71,14 @@
 	description={description || m.products_meta_description()}
 	image={product.images[0]?.url}
 	imageAlt={name}
+	imageWidth={product.images[0]?.width}
+	imageHeight={product.images[0]?.height}
 	type="product"
+	product={{
+		priceCents: product.finalPriceCents,
+		currency: product.currency,
+		inStock: product.stock > 0
+	}}
 />
 <JsonLd data={jsonLd} />
 
