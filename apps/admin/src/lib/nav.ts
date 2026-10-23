@@ -23,6 +23,7 @@ export const NAV: NavItem[][] = [
 			permission: 'orders:read',
 			badge: 'pendingOrders'
 		},
+		{ href: '/analytics', label: m.nav_analytics, icon: 'chart', permission: 'orders:read' },
 		{ href: '/products', label: m.nav_products, icon: 'box' },
 		{ href: '/categories', label: m.nav_categories, icon: 'tag' }
 	],

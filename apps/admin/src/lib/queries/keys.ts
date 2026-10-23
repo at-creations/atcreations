@@ -8,6 +8,7 @@ export type ProductListParams = QueryOf<'/v1/admin/products'>;
 export type OrderListParams = QueryOf<'/v1/admin/orders'>;
 export type StaffListParams = QueryOf<'/v1/admin/staff'>;
 export type AuditListParams = QueryOf<'/v1/admin/audit'>;
+export type AnalyticsDays = NonNullable<QueryOf<'/v1/admin/analytics'>['days']>;
 
 /**
  * Drop `undefined`, `null` and '' so equivalent filter objects produce the same key
@@ -55,6 +56,10 @@ export const keys = {
 		invitations: ['staff', 'invitations'] as const
 	},
 	storeInfo: ['store-info'] as const,
+	analytics: {
+		all: ['analytics'] as const,
+		report: (days: AnalyticsDays) => ['analytics', 'report', days] as const
+	},
 	audit: {
 		all: ['audit'] as const,
 		list: (params: AuditListParams = {}) => ['audit', 'list', normalizeParams(params)] as const
