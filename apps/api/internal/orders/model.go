@@ -111,8 +111,10 @@ type Order struct {
 	StaffNote      string        `bson:"staffNote,omitempty" json:"staffNote,omitempty"`
 	TrackingNumber string        `bson:"trackingNumber,omitempty" json:"trackingNumber,omitempty"`
 	History        []Event       `bson:"history" json:"history"`
-	CreatedAt      time.Time     `bson:"createdAt" json:"createdAt"`
-	UpdatedAt      time.Time     `bson:"updatedAt" json:"updatedAt"`
+	// Folded words of the number, customer name and email, for indexed word-prefix search.
+	SearchWords []string  `bson:"searchWords" json:"-"`
+	CreatedAt   time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
 type CreateInput struct {

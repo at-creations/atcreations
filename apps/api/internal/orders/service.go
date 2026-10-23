@@ -24,6 +24,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
+	"github.com/atcreations/atcreations/apps/api/internal/platform/textx"
 )
 
 // Unambiguous alphabet (no 0/O, 1/I/L).
@@ -55,7 +56,25 @@ func (s *Service) EnsureIndexes(ctx context.Context) error {
 		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "createdAt", Value: -1}}},
 		mongox.Index{Keys: bson.D{{Key: "createdAt", Value: -1}}},
 		mongox.Index{Keys: bson.D{{Key: "customer.email", Value: 1}, {Key: "createdAt", Value: -1}}},
+		mongox.Index{Keys: bson.D{{Key: "searchWords", Value: 1}, {Key: "createdAt", Value: -1}}},
+		// total_desc / total_asc (exact reverses), with and without a status filter.
+		mongox.Index{Keys: bson.D{{Key: "totalCents", Value: -1}, {Key: "createdAt", Value: -1}}},
+		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "totalCents", Value: -1}, {Key: "createdAt", Value: -1}}},
+		// Covers the analytics report's sales and status queries (no document reads).
+		mongox.Index{Keys: bson.D{{Key: "createdAt", Value: 1}, {Key: "status", Value: 1}, {Key: "totalCents", Value: 1}}},
 	)
+}
+
+func orderSearchWords(o *Order) []string {
+	return textx.SearchWords(o.Number, o.Customer.Name, o.Customer.Email)
+}
+
+// BackfillSearchWords sets searchWords on orders placed before it existed (runs once).
+func (s *Service) BackfillSearchWords(ctx context.Context) error {
+	return mongox.Backfill(ctx, s.orders, bson.M{"searchWords": bson.M{"$exists": false}},
+		bson.M{"number": 1, "customer": 1},
+		func(o *Order) bson.ObjectID { return o.ID },
+		func(o *Order) bson.M { return bson.M{"searchWords": orderSearchWords(o)} })
 }
 
 func randomCode(n int) string {
@@ -150,6 +169,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Order, string, 
 			}
 			order.TotalCents = order.SubtotalCents - order.DiscountCents + order.ShippingCents + order.TaxCents
 			order.Number = newOrderNumber(now)
+			order.SearchWords = orderSearchWords(order)
 			_, err := s.orders.InsertOne(tx, order)
 			return nil, err
 		})
@@ -265,9 +285,9 @@ func (s *Service) List(ctx context.Context, q ListQuery) ([]Order, httpx.PageMet
 	if q.Status != "" {
 		f["status"] = q.Status
 	}
-	if t := strings.TrimSpace(q.Text); t != "" {
-		re := mongox.ContainsPattern(t)
-		f["$or"] = bson.A{bson.M{"number": re}, bson.M{"customer.name": re}, bson.M{"customer.email": re}}
+	// Every term must start a word of the number, name or email ("AT-2601", "nguyen", "jane@exa").
+	if terms := textx.PrefixTerms(q.Text); len(terms) > 0 {
+		f["searchWords"] = textx.WordPrefixes(terms)
 	}
 	if q.From != nil || q.To != nil {
 		r := bson.M{}
@@ -285,10 +305,10 @@ func (s *Service) List(ctx context.Context, q ListQuery) ([]Order, httpx.PageMet
 		sort = bson.D{{Key: "createdAt", Value: 1}}
 	case "total_desc":
 		sort = bson.D{{Key: "totalCents", Value: -1}, {Key: "createdAt", Value: -1}}
-	case "total_asc":
-		sort = bson.D{{Key: "totalCents", Value: 1}, {Key: "createdAt", Value: -1}}
+	case "total_asc": // the exact reverse of total_desc, so the same index serves both
+		sort = bson.D{{Key: "totalCents", Value: 1}, {Key: "createdAt", Value: 1}}
 	}
-	total, err := s.orders.CountDocuments(ctx, f)
+	total, capped, err := mongox.CountForPage(ctx, s.orders, f)
 	if err != nil {
 		return nil, httpx.PageMeta{}, err
 	}
@@ -300,7 +320,7 @@ func (s *Service) List(ctx context.Context, q ListQuery) ([]Order, httpx.PageMet
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, httpx.PageMeta{}, err
 	}
-	return out, q.Page.Meta(total), nil
+	return out, q.Page.MetaCapped(total, capped), nil
 }
 
 type TransitionInput struct {

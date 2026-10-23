@@ -133,6 +133,10 @@ func run(apply, overwrite bool, concurrency int) error {
 		return err
 	}
 	if apply {
+		// Imports write products directly; set the stored category counts from them.
+		if err := cat.RecountCategoryProducts(ctx); err != nil {
+			return fmt.Errorf("recount category products: %w", err)
+		}
 		actx := auth.WithPrincipal(ctx, &auth.Principal{UserID: "migration", Email: "migration"})
 		auditLog.Record(actx, "migration.import", "migration", time.Now().UTC().Format(time.RFC3339))
 	}

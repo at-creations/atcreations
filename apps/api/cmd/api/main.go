@@ -162,6 +162,18 @@ func run() error {
 			return err
 		}
 	}
+	// One-time data migrations, in the background so startup is not delayed. Until they finish,
+	// search does not find the documents they have not reached yet.
+	go func() {
+		for name, fn := range map[string]func(context.Context) error{
+			"product-search-words-v1": catalogSvc.BackfillSearchWords,
+			"order-search-words-v1":   orderSvc.BackfillSearchWords,
+		} {
+			if err := mongox.RunOnce(ctx, db, name, fn); err != nil {
+				slog.Error("data migration failed; it runs again on the next start", "err", err)
+			}
+		}
+	}()
 	cancel()
 
 	uploadSvc.Run(ctx)
@@ -169,6 +181,8 @@ func run() error {
 	if cfg.JobsEnabled {
 		jobs.NewScheduler(mongox.NewLeases(db, fmt.Sprintf("%s-%d", host, os.Getpid())),
 			jobs.Job{Name: "recent-views", Every: time.Hour, Timeout: 5 * time.Minute, Run: catalogSvc.RefreshRecentViews},
+			// Repairs drift in the stored category product counts (and backfills them on first run).
+			jobs.Job{Name: "category-counts", Every: 6 * time.Hour, Timeout: 10 * time.Minute, Run: catalogSvc.RecountCategoryProducts},
 			jobs.Job{Name: "upload-sweep", Every: time.Hour, Timeout: 10 * time.Minute, Run: func(ctx context.Context) error {
 				n, err := uploadSvc.Sweep(ctx)
 				if n > 0 {

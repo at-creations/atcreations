@@ -21,32 +21,15 @@ type AdminCategoryDTO struct {
 }
 
 // ListAdminCategories returns every category with its product count, in display order.
+// Counts are stored on the categories (see counts.go), so this never scans the products.
 func (s *Service) ListAdminCategories(ctx context.Context) ([]AdminCategoryDTO, error) {
-	cats, err := s.ListCategories(ctx)
+	cats, err := s.categoryDocs(ctx)
 	if err != nil {
 		return nil, err
-	}
-	cur, err := s.products.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$unwind", Value: "$categoryIds"}},
-		{{Key: "$group", Value: bson.M{"_id": "$categoryIds", "n": bson.M{"$sum": 1}}}},
-	})
-	if err != nil {
-		return nil, err
-	}
-	var rows []struct {
-		ID bson.ObjectID `bson:"_id"`
-		N  int64         `bson:"n"`
-	}
-	if err := cur.All(ctx, &rows); err != nil {
-		return nil, err
-	}
-	counts := make(map[bson.ObjectID]int64, len(rows))
-	for _, r := range rows {
-		counts[r.ID] = r.N
 	}
 	out := make([]AdminCategoryDTO, len(cats))
-	for i, c := range cats {
-		out[i] = AdminCategoryDTO{CategoryDTO: c, ProductCount: counts[c.ID]}
+	for i := range cats {
+		out[i] = AdminCategoryDTO{CategoryDTO: s.categoryDTO(&cats[i]), ProductCount: max(cats[i].ProductCount, 0)}
 	}
 	return out, nil
 }

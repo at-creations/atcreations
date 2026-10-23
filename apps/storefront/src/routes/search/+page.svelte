@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatTotal } from '$lib/format';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { navigating, page } from '$app/state';
@@ -189,7 +190,7 @@
 	</form>
 
 	<p class="mt-10 mb-6 text-sm text-gray-600" aria-live="polite">
-		{m.search_results({ shown: data.products.length, total: data.meta.total })}
+		{m.search_results({ shown: data.products.length, total: formatTotal(data.meta, locale) })}
 	</p>
 
 	{#if isLoading}

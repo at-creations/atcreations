@@ -16,7 +16,7 @@ const STATIC_PATHS = [
 	'/terms'
 ];
 const PAGE_SIZE = 100;
-const MAX_PAGES = 200; // hard stop: 20k products
+const MAX_PAGES = 100; // the API pages lists 10k rows deep: 10k products (20k URLs, under the 50k limit)
 
 function escapeXml(value: string): string {
 	return value

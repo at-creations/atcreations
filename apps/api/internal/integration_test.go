@@ -447,3 +447,88 @@ var (
 	id1 = bson.NewObjectID()
 	id2 = bson.NewObjectID()
 )
+
+func TestCategoryCountsFollowProducts(t *testing.T) {
+	cat, _, _ := setup(t)
+	ctx := context.Background()
+	var ids []bson.ObjectID
+	for _, name := range []string{"A", "B"} {
+		c, err := cat.CreateCategory(ctx, &catalog.CategoryInput{Name: catalog.NameInput{EN: name}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, c.ID)
+	}
+	counts := func() map[bson.ObjectID]int64 {
+		t.Helper()
+		list, err := cat.ListAdminCategories(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[bson.ObjectID]int64{}
+		for _, c := range list {
+			out[c.ID] = c.ProductCount
+		}
+		return out
+	}
+	in := &catalog.ProductInput{Status: catalog.StatusDraft, Name: catalog.NameInput{EN: "Cup"}, CategoryIDs: []bson.ObjectID{ids[0]}}
+	p, err := cat.CreateProduct(ctx, "u", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(); c[ids[0]] != 1 || c[ids[1]] != 0 {
+		t.Fatalf("after create: %v", c)
+	}
+	in.CategoryIDs, in.Version = []bson.ObjectID{ids[1]}, &p.Version // move A → B
+	if _, err := cat.UpdateProduct(ctx, "u", p.ID, in); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(); c[ids[0]] != 0 || c[ids[1]] != 1 {
+		t.Fatalf("after move: %v", c)
+	}
+	if err := cat.DeleteProduct(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(); c[ids[0]] != 0 || c[ids[1]] != 0 {
+		t.Fatalf("after delete: %v", c)
+	}
+	// Drift (e.g. a product written directly by an import) is repaired by the recount.
+	if _, err := cat.CreateProduct(ctx, "u", &catalog.ProductInput{Status: catalog.StatusDraft, Name: catalog.NameInput{EN: "Jar"}, CategoryIDs: ids}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.ImportProduct(ctx, &catalog.Product{ID: bson.NewObjectID(), Slug: "imported", Status: catalog.StatusDraft, Name: catalog.LocalizedText{EN: "Imported"}, CategoryIDs: []bson.ObjectID{ids[0]}}, catalog.ImportKeep); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.RecountCategoryProducts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if c := counts(); c[ids[0]] != 2 || c[ids[1]] != 1 {
+		t.Fatalf("after recount: %v", c)
+	}
+}
+
+func TestOrderSearchByWordPrefix(t *testing.T) {
+	cat, ord, _ := setup(t)
+	ctx := context.Background()
+	p, err := cat.CreateProduct(ctx, "u", &catalog.ProductInput{Status: catalog.StatusPublished, Name: catalog.NameInput{EN: "Mug"}, PriceCents: i64(900), Stock: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, _, err := ord.Create(ctx, &orders.CreateInput{
+		Customer: orders.Customer{Name: "Nguyễn Thị Lan", Email: "lan.nguyen@example.com"},
+		Shipping: orders.Address{Name: "Lan", Phone: "1", Line1: "1", City: "c", PostalCode: "p", Country: "CA"},
+		Items:    []orders.ItemInput{{ProductID: p.ID, Quantity: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"nguyen", "LAN", "lan.nguyen@exa", o.Number[:6], o.Number} {
+		got, _, err := ord.List(ctx, orders.ListQuery{Text: q, Page: httpx.Page{Page: 1, Size: 10}})
+		if err != nil || len(got) != 1 {
+			t.Errorf("search %q: %d results (%v), want 1", q, len(got), err)
+		}
+	}
+	if got, _, _ := ord.List(ctx, orders.ListQuery{Text: "guyen", Page: httpx.Page{Page: 1, Size: 10}}); len(got) != 0 {
+		t.Errorf("mid-word text must not match (word-prefix search), got %d", len(got))
+	}
+}

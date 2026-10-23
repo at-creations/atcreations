@@ -104,3 +104,21 @@ func TestQueryValidation(t *testing.T) {
 		t.Fatalf("expected 4 field errors, got %#v", err)
 	}
 }
+
+func TestPagesStopAtListDepth(t *testing.T) {
+	page := func(target string) (Page, error) {
+		q := NewQuery(httptest.NewRequestWithContext(context.Background(), http.MethodGet, target, nil))
+		p := q.Page(25, 100)
+		return p, q.Err()
+	}
+	if _, err := page("/?page=100&pageSize=100"); err != nil {
+		t.Fatalf("last allowed page: %v", err)
+	}
+	if _, err := page("/?page=101&pageSize=100"); err == nil {
+		t.Fatal("paging past MaxListDepth must be refused")
+	}
+	m := Page{Page: 1, Size: 50}.MetaCapped(MaxListDepth, true)
+	if !m.TotalCapped || m.TotalPages != MaxListDepth/50 {
+		t.Fatalf("meta = %+v", m)
+	}
+}

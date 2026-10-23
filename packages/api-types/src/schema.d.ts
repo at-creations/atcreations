@@ -1940,8 +1940,12 @@ export interface components {
         PageMeta: {
             page: number;
             pageSize: number;
+            /** @description Matches, counted up to 10,000 (see totalCapped) */
             total: number;
+            /** @description Pages that can be requested (lists can be paged 10 */
             totalPages: number;
+            /** @description There are more than total matches; narrow the filters to reach them */
+            totalCapped?: boolean;
         };
         LocalizedText: {
             en: string;

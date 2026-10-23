@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatTotal } from '$lib/format';
 	import { m } from '$lib/paraglide/messages';
 	import { t } from '$lib/i18n';
 	import { productsHref, withQuery } from '$lib/urls';
@@ -58,7 +59,7 @@
 	{/if}
 
 	<p class="mt-10 mb-6 text-sm text-gray-600" aria-live="polite">
-		{m.products_showing({ shown: data.products.length, total: data.meta.total })}
+		{m.products_showing({ shown: data.products.length, total: formatTotal(data.meta, locale) })}
 	</p>
 
 	{#if data.products.length === 0}

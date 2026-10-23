@@ -193,6 +193,8 @@ func TestCorruptImageFailsAndCleansUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "job failed", func() bool { return jobStatus(t, svc, job.ID).Status == StatusFailed })
+	// The slot is released right after the job is marked failed.
+	waitFor(t, "slot released", func() bool { return product().PendingImages == 0 })
 	if store.Has(job.SourceKey) || store.Has(job.OutputKey) {
 		t.Fatal("original and output must be gone")
 	}

@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -9,11 +10,18 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// MaxListDepth is how far a list can be paged (skip + page size). Offset paging gets slower
+// with depth, so deeper results are reached by narrowing the filters instead. Totals are also
+// counted only up to this depth (see PageMeta.TotalCapped).
+const MaxListDepth = 10_000
+
 type PageMeta struct {
 	Page       int   `json:"page"`
 	PageSize   int   `json:"pageSize"`
 	Total      int64 `json:"total"`
 	TotalPages int   `json:"totalPages"`
+	// TotalCapped: there are more than Total matches (counting stopped at MaxListDepth).
+	TotalCapped bool `json:"totalCapped,omitempty"`
 }
 
 type Page struct {
@@ -25,6 +33,16 @@ func (p Page) Skip() int64 { return int64((p.Page - 1) * p.Size) }
 func (p Page) Meta(total int64) PageMeta {
 	pages := int((total + int64(p.Size) - 1) / int64(p.Size))
 	return PageMeta{Page: p.Page, PageSize: p.Size, Total: total, TotalPages: pages}
+}
+
+// MetaCapped is Meta for a total counted only up to MaxListDepth. Pages stop at that depth.
+func (p Page) MetaCapped(total int64, capped bool) PageMeta {
+	m := p.Meta(total)
+	m.TotalCapped = capped
+	if maxPages := MaxListDepth / p.Size; m.TotalPages > maxPages {
+		m.TotalPages = maxPages
+	}
+	return m
 }
 
 // Query is a small accumulator for parsing and validating query parameters.
@@ -123,7 +141,11 @@ func (q *Query) OptObjectID(name string) *bson.ObjectID {
 }
 
 func (q *Query) Page(defSize, maxSize int) Page {
-	return Page{Page: q.Int("page", 1, 1, 10_000), Size: q.Int("pageSize", defSize, 1, maxSize)}
+	p := Page{Page: q.Int("page", 1, 1, MaxListDepth), Size: q.Int("pageSize", defSize, 1, maxSize)}
+	if p.Size > 0 && p.Page > MaxListDepth/p.Size {
+		q.fail("page", fmt.Sprintf("must be at most %d for pageSize %d; narrow the filters to see older results", MaxListDepth/p.Size, p.Size))
+	}
+	return p
 }
 
 // ObjectIDParam parses a path value as an ObjectID, answering 404 on failure

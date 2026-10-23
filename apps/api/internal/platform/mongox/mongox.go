@@ -13,7 +13,25 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 	"go.mongodb.org/mongo-driver/v2/mongo/writeconcern"
+
+	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 )
+
+// CountForPage counts the matches of a paginated list without reading a large collection in
+// full: an empty filter uses the collection's metadata (constant time); any other filter stops
+// counting at httpx.MaxListDepth, which is as deep as lists can be paged anyway. capped reports
+// that there are more matches than total.
+func CountForPage(ctx context.Context, coll *mongo.Collection, filter bson.M) (total int64, capped bool, err error) {
+	if len(filter) == 0 {
+		total, err = coll.EstimatedDocumentCount(ctx)
+		return total, false, err
+	}
+	total, err = coll.CountDocuments(ctx, filter, options.Count().SetLimit(httpx.MaxListDepth+1))
+	if total > httpx.MaxListDepth {
+		return httpx.MaxListDepth, true, err
+	}
+	return total, false, err
+}
 
 func Connect(ctx context.Context, uri, database string, timeout time.Duration) (*mongo.Client, *mongo.Database, error) {
 	opts := options.Client().
@@ -76,6 +94,19 @@ func EnsureIndexes(ctx context.Context, coll *mongo.Collection, idx ...Index) er
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		return fmt.Errorf("create indexes on %s: %w", coll.Name(), err)
+	}
+	return nil
+}
+
+// DropIndexes removes indexes that a newer EnsureIndexes call superseded. Missing ones are
+// ignored, so it is safe to run on every start.
+func DropIndexes(ctx context.Context, coll *mongo.Collection, names ...string) error {
+	for _, name := range names {
+		err := coll.Indexes().DropOne(ctx, name)
+		var cmdErr mongo.CommandError
+		if err != nil && (!errors.As(err, &cmdErr) || cmdErr.Name != "IndexNotFound") {
+			return fmt.Errorf("drop index %s on %s: %w", name, coll.Name(), err)
+		}
 	}
 	return nil
 }

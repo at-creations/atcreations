@@ -50,14 +50,15 @@ type Product struct {
 	// Version increments on every edit of the editable fields and on every
 	// stock change, enabling optimistic concurrency for admin edits.
 	Version int64 `bson:"version"`
-	// Accent-folded copies used for search and locale-aware name sorting.
-	Search     string    `bson:"search"`
-	SortNameEN string    `bson:"sortNameEn"`
-	SortNameVI string    `bson:"sortNameVi"`
-	CreatedAt  time.Time `bson:"createdAt"`
-	UpdatedAt  time.Time `bson:"updatedAt"`
-	CreatedBy  string    `bson:"createdBy,omitempty"`
-	UpdatedBy  string    `bson:"updatedBy,omitempty"`
+	// Accent-folded copies used for search and locale-aware name sorting. SearchWords (names
+	// first) backs word-prefix search with a multikey index.
+	SearchWords []string  `bson:"searchWords"`
+	SortNameEN  string    `bson:"sortNameEn"`
+	SortNameVI  string    `bson:"sortNameVi"`
+	CreatedAt   time.Time `bson:"createdAt"`
+	UpdatedAt   time.Time `bson:"updatedAt"`
+	CreatedBy   string    `bson:"createdBy,omitempty"`
+	UpdatedBy   string    `bson:"updatedBy,omitempty"`
 }
 
 type Category struct {
@@ -67,8 +68,10 @@ type Category struct {
 	Description LocalizedText `bson:"description"`
 	Image       *Image        `bson:"image,omitempty"`
 	SortOrder   int           `bson:"sortOrder"`
-	CreatedAt   time.Time     `bson:"createdAt"`
-	UpdatedAt   time.Time     `bson:"updatedAt"`
+	// ProductCount: products (any status) in the category; maintained on writes (see counts.go).
+	ProductCount int64     `bson:"productCount,omitempty"`
+	CreatedAt    time.Time `bson:"createdAt"`
+	UpdatedAt    time.Time `bson:"updatedAt"`
 }
 
 // FinalPrice applies a percentage discount, rounding half up to the cent.

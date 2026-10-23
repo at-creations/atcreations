@@ -70,7 +70,7 @@ func (l *Log) HandleList(w http.ResponseWriter, r *http.Request) error {
 	if err := q.Err(); err != nil {
 		return err
 	}
-	total, err := l.coll.CountDocuments(r.Context(), filter)
+	total, capped, err := mongox.CountForPage(r.Context(), l.coll, filter)
 	if err != nil {
 		return err
 	}
@@ -83,6 +83,6 @@ func (l *Log) HandleList(w http.ResponseWriter, r *http.Request) error {
 	if err := cur.All(r.Context(), &entries); err != nil {
 		return err
 	}
-	httpx.Paged(w, entries, page.Meta(total))
+	httpx.Paged(w, entries, page.MetaCapped(total, capped))
 	return nil
 }

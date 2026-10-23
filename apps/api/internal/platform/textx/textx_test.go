@@ -1,6 +1,9 @@
 package textx
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFold(t *testing.T) {
 	cases := map[string]string{
@@ -43,5 +46,20 @@ func TestValidSlug(t *testing.T) {
 		if ValidSlug(s) {
 			t.Errorf("ValidSlug(%q) = true", s)
 		}
+	}
+}
+
+func TestSearchWords(t *testing.T) {
+	got := SearchWords("Bình Gốm sứ", "Gốm đẹp — AT-260101", "binh")
+	want := []string{"binh", "gom", "su", "dep", "at", "260101"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("SearchWords = %v, want %v", got, want)
+	}
+	if terms := PrefixTerms("  GỐM  bì "); strings.Join(terms, ",") != "gom,bi" {
+		t.Fatalf("PrefixTerms = %v", terms)
+	}
+	many := strings.Repeat("word ", 10) + strings.Repeat("x", 70)
+	if w := SearchWords(many); len(w) != 1 {
+		t.Fatalf("duplicates and over-long words must be dropped: %v", w)
 	}
 }

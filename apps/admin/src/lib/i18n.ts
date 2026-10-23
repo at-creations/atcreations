@@ -14,6 +14,12 @@ function intlLocale() {
 	return getLocale() === 'vi' ? 'vi-VN' : 'en-CA';
 }
 
+/** A list total; "10,000+" when the API stopped counting (meta.totalCapped). */
+export function formatTotal(meta: { total: number; totalCapped?: boolean }): string {
+	const n = new Intl.NumberFormat(intlLocale()).format(meta.total);
+	return meta.totalCapped ? `${n}+` : n;
+}
+
 export function formatDate(iso: string | null | undefined): string {
 	if (!iso) return '';
 	const d = new Date(iso);

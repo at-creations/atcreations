@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"strings"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -36,18 +37,17 @@ func TestPublicFilterAlwaysRestrictsToPublished(t *testing.T) {
 	}
 }
 
-func TestSearchTermsAreQuotedAndFolded(t *testing.T) {
-	f := ProductQuery{Text: "Gốm (.*)+"}.filter()
-	and, ok := f["$and"].(bson.A)
-	if !ok || len(and) != 2 {
-		t.Fatalf("expected two term clauses, got %#v", f["$and"])
+func TestSearchTermsAreFoldedWordPrefixes(t *testing.T) {
+	// Punctuation never reaches a pattern: terms are letters and digits only.
+	f := ProductQuery{Text: "Gốm (.*)+ Bình2"}.filter()
+	all, ok := f["searchWords"].(bson.M)["$all"].(bson.A)
+	if !ok || len(all) != 2 {
+		t.Fatalf("expected two prefix clauses, got %#v", f["searchWords"])
 	}
-	re := and[1].(bson.M)["search"].(bson.Regex)
-	if re.Pattern != `\(\.\*\)\+` || re.Options != "i" {
-		t.Fatalf("regex not escaped: %#v", re)
-	}
-	if first := and[0].(bson.M)["search"].(bson.Regex); first.Pattern != "gom" {
-		t.Fatalf("term not folded: %#v", first)
+	for i, want := range []string{"^gom", "^binh2"} {
+		if re := all[i].(bson.Regex); re.Pattern != want || re.Options != "" {
+			t.Fatalf("clause %d = %#v, want anchored case-sensitive %q", i, re, want)
+		}
 	}
 }
 
@@ -56,7 +56,7 @@ func TestApplyProductInputDerivedFields(t *testing.T) {
 	applyProductInput(&p, &ProductInput{
 		Status: StatusPublished, Name: NameInput{EN: "Vase", VI: "Bình gốm"}, PriceCents: ptr(2000), DiscountPercent: 25,
 	})
-	if !p.HasPrice || *p.FinalPriceCents != 1500 || p.SortNameVI != "binh gom" || p.Search != "vase binh gom" {
+	if !p.HasPrice || *p.FinalPriceCents != 1500 || p.SortNameVI != "binh gom" || strings.Join(p.SearchWords, " ") != "vase binh gom" {
 		t.Fatalf("unexpected derived fields: %+v", p)
 	}
 }

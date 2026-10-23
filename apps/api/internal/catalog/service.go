@@ -59,13 +59,40 @@ func NewService(db *mongo.Database, storage media.Storage, audit *audit.Log, cac
 }
 
 func (s *Service) EnsureIndexes(ctx context.Context) error {
+	// Every list sort (see ProductQuery.sort) is served by an index ending in the same keys,
+	// including the _id tie-breaker, so pages are read in index order instead of sorting all
+	// matches in memory. A sort and its exact reverse share one index.
+	relevance := bson.D{{Key: "featured", Value: -1}, {Key: "recentViews", Value: -1}, {Key: "views", Value: -1}, {Key: "createdAt", Value: -1}, {Key: "_id", Value: 1}}
+	newest := bson.D{{Key: "createdAt", Value: -1}, {Key: "_id", Value: -1}}
+	withPrefix := func(prefix bson.D, sort bson.D) bson.D { return append(append(bson.D{}, prefix...), sort...) }
+	status := bson.D{{Key: "status", Value: 1}}
+	inCategory := bson.D{{Key: "categoryIds", Value: 1}, {Key: "status", Value: 1}}
 	err := mongox.EnsureIndexes(ctx, s.products,
 		mongox.Index{Keys: bson.D{{Key: "slug", Value: 1}}, Unique: true},
-		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "featured", Value: -1}, {Key: "recentViews", Value: -1}, {Key: "views", Value: -1}, {Key: "createdAt", Value: -1}}},
-		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "createdAt", Value: -1}}},
-		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: 1}}},
-		mongox.Index{Keys: bson.D{{Key: "categoryIds", Value: 1}, {Key: "status", Value: 1}}},
-		mongox.Index{Keys: bson.D{{Key: "stock", Value: 1}}},
+		mongox.Index{Keys: withPrefix(status, relevance)},
+		mongox.Index{Keys: withPrefix(status, newest)},
+		mongox.Index{Keys: newest}, // admin lists without a status filter
+		mongox.Index{Keys: withPrefix(status, bson.D{{Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: 1}, {Key: "_id", Value: 1}})},
+		mongox.Index{Keys: withPrefix(status, bson.D{{Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: -1}, {Key: "_id", Value: -1}})},
+		mongox.Index{Keys: withPrefix(status, bson.D{{Key: "sortNameEn", Value: 1}, {Key: "_id", Value: 1}})},
+		mongox.Index{Keys: withPrefix(status, bson.D{{Key: "sortNameVi", Value: 1}, {Key: "_id", Value: 1}})},
+		mongox.Index{Keys: withPrefix(status, bson.D{{Key: "views", Value: -1}, {Key: "_id", Value: 1}})},
+		// Category pages: the default and newest sorts (others sort the category's matches).
+		mongox.Index{Keys: withPrefix(inCategory, relevance)},
+		mongox.Index{Keys: withPrefix(inCategory, newest)},
+		mongox.Index{Keys: bson.D{{Key: "stock", Value: 1}, {Key: "_id", Value: 1}}},
+		mongox.Index{Keys: bson.D{{Key: "searchWords", Value: 1}, {Key: "status", Value: 1}}},
+	)
+	if err != nil {
+		return err
+	}
+	// Superseded by the indexes above (same keys plus the _id tie-breaker).
+	err = mongox.DropIndexes(ctx, s.products,
+		"status_1_featured_-1_recentViews_-1_views_-1_createdAt_-1",
+		"status_1_createdAt_-1",
+		"status_1_hasPrice_-1_finalPriceCents_1",
+		"categoryIds_1_status_1",
+		"stock_1",
 	)
 	if err != nil {
 		return err
@@ -212,15 +239,23 @@ func (q ProductQuery) filter() bson.M {
 		}
 		f["finalPriceCents"] = r
 	}
-	// Every search term must appear in the folded haystack (AND semantics).
-	if terms := strings.Fields(textx.Fold(q.Text)); len(terms) > 0 {
-		and := bson.A{}
-		for _, t := range terms[:min(len(terms), 8)] {
-			and = append(and, bson.M{"search": mongox.ContainsPattern(t)})
-		}
-		f["$and"] = and
+	// Every search term must start a word of the product (AND semantics), accent-insensitive.
+	if terms := textx.PrefixTerms(q.Text); len(terms) > 0 {
+		f["searchWords"] = textx.WordPrefixes(terms)
 	}
 	return f
+}
+
+func productSearchWords(name, description LocalizedText) []string {
+	return textx.SearchWords(name.EN, name.VI, description.EN, description.VI)
+}
+
+// BackfillSearchWords sets searchWords on products saved before it existed (runs once).
+func (s *Service) BackfillSearchWords(ctx context.Context) error {
+	return mongox.Backfill(ctx, s.products, bson.M{"searchWords": bson.M{"$exists": false}},
+		bson.M{"name": 1, "description": 1},
+		func(p *Product) bson.ObjectID { return p.ID },
+		func(p *Product) bson.M { return bson.M{"searchWords": productSearchWords(p.Name, p.Description)} })
 }
 
 func (q ProductQuery) sort() bson.D {
@@ -236,11 +271,11 @@ func (q ProductQuery) sort() bson.D {
 	case "price_asc":
 		return bson.D{{Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: 1}, {Key: "_id", Value: 1}}
 	case "price_desc":
-		return bson.D{{Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: -1}, {Key: "_id", Value: 1}}
+		return bson.D{{Key: "hasPrice", Value: -1}, {Key: "finalPriceCents", Value: -1}, {Key: "_id", Value: -1}}
 	case "name_asc":
 		return bson.D{{Key: nameField, Value: 1}, {Key: "_id", Value: 1}}
-	case "name_desc":
-		return bson.D{{Key: nameField, Value: -1}, {Key: "_id", Value: 1}}
+	case "name_desc": // the exact reverse of name_asc, so the same index serves both
+		return bson.D{{Key: nameField, Value: -1}, {Key: "_id", Value: -1}}
 	case "stock_asc":
 		return bson.D{{Key: "stock", Value: 1}, {Key: "_id", Value: 1}}
 	case "popular":
@@ -252,7 +287,7 @@ func (q ProductQuery) sort() bson.D {
 
 func (s *Service) ListProducts(ctx context.Context, q ProductQuery) ([]ProductDTO, httpx.PageMeta, error) {
 	f := q.filter()
-	total, err := s.products.CountDocuments(ctx, f)
+	total, capped, err := mongox.CountForPage(ctx, s.products, f)
 	if err != nil {
 		return nil, httpx.PageMeta{}, err
 	}
@@ -265,7 +300,7 @@ func (s *Service) ListProducts(ctx context.Context, q ProductQuery) ([]ProductDT
 		return nil, httpx.PageMeta{}, err
 	}
 	dtos, err := s.productDTOs(ctx, ps)
-	return dtos, q.Page.Meta(total), err
+	return dtos, q.Page.MetaCapped(total, capped), err
 }
 
 func (s *Service) findProduct(ctx context.Context, filter bson.M) (*Product, error) {
@@ -291,6 +326,19 @@ func (s *Service) CategoryBySlug(ctx context.Context, slug string) (*Category, e
 }
 
 func (s *Service) ListCategories(ctx context.Context) ([]CategoryDTO, error) {
+	cs, err := s.categoryDocs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CategoryDTO, len(cs))
+	for i := range cs {
+		out[i] = s.categoryDTO(&cs[i])
+	}
+	return out, nil
+}
+
+// categoryDocs returns every category in display order.
+func (s *Service) categoryDocs(ctx context.Context) ([]Category, error) {
 	cur, err := s.categories.Find(ctx, bson.M{}, options.Find().
 		SetSort(bson.D{{Key: "sortOrder", Value: 1}, {Key: "name.en", Value: 1}}).SetLimit(500))
 	if err != nil {
@@ -300,11 +348,7 @@ func (s *Service) ListCategories(ctx context.Context) ([]CategoryDTO, error) {
 	if err := cur.All(ctx, &cs); err != nil {
 		return nil, err
 	}
-	out := make([]CategoryDTO, len(cs))
-	for i := range cs {
-		out[i] = s.categoryDTO(&cs[i])
-	}
-	return out, nil
+	return cs, nil
 }
 
 // ---------- Product writes ----------
@@ -358,7 +402,7 @@ func applyProductInput(p *Product, in *ProductInput) {
 	p.Stock = in.Stock
 	p.Featured = in.Featured
 	p.CategoryIDs = in.CategoryIDs
-	p.Search = textx.SearchText(p.Name.EN, p.Name.VI, p.Description.EN, p.Description.VI)
+	p.SearchWords = productSearchWords(p.Name, p.Description)
 	p.SortNameEN = textx.Fold(p.Name.EN)
 	p.SortNameVI = textx.Fold(firstNonEmpty(p.Name.VI, p.Name.EN))
 }
@@ -415,6 +459,7 @@ func (s *Service) CreateProduct(ctx context.Context, actor string, in *ProductIn
 	if err != nil {
 		return ProductDTO{}, err
 	}
+	s.adjustCategoryCounts(ctx, p.CategoryIDs, nil)
 	s.audit.Record(ctx, "product.create", "product", p.ID.Hex())
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, p)
@@ -431,6 +476,7 @@ func (s *Service) UpdateProduct(ctx context.Context, actor string, id bson.Objec
 	if err != nil {
 		return ProductDTO{}, err
 	}
+	categoriesBefore := p.CategoryIDs
 	applyProductInput(p, in)
 	if in.Slug != "" {
 		p.Slug = in.Slug
@@ -440,7 +486,7 @@ func (s *Service) UpdateProduct(ctx context.Context, actor string, id bson.Objec
 		"slug": p.Slug, "status": p.Status, "name": p.Name, "description": p.Description,
 		"priceCents": p.PriceCents, "discountPercent": p.DiscountPercent, "finalPriceCents": p.FinalPriceCents,
 		"hasPrice": p.HasPrice, "stock": p.Stock, "featured": p.Featured, "categoryIds": p.CategoryIDs,
-		"search": p.Search, "sortNameEn": p.SortNameEN, "sortNameVi": p.SortNameVI,
+		"searchWords": p.SearchWords, "sortNameEn": p.SortNameEN, "sortNameVi": p.SortNameVI,
 		"updatedAt": p.UpdatedAt, "updatedBy": p.UpdatedBy,
 	}
 	// Compare-and-swap on version: a concurrent edit or a stock change from an
@@ -457,6 +503,9 @@ func (s *Service) UpdateProduct(ctx context.Context, actor string, id bson.Objec
 		return ProductDTO{}, httpx.Conflict("this product was changed by someone else (or its stock changed); reload and try again")
 	}
 	p.Version = *in.Version + 1
+	// The version check guarantees categoriesBefore is what this update replaced.
+	joined, left := categoryDiff(categoriesBefore, p.CategoryIDs)
+	s.adjustCategoryCounts(ctx, joined, left)
 	s.audit.Record(ctx, "product.update", "product", id.Hex())
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return s.productDTO(ctx, p)
@@ -474,6 +523,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id bson.ObjectID) error {
 	// Image objects are left for the nightly sweep, which keeps any that
 	// past orders still reference.
 	s.ownerDeleted(ctx, "product", id)
+	s.adjustCategoryCounts(ctx, nil, p.CategoryIDs)
 	s.audit.Record(ctx, "product.delete", "product", id.Hex())
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil

@@ -23,3 +23,12 @@ export function formatTime(hhmm: string, locale: Locale): string {
 		timeZone: 'UTC'
 	}).format(date);
 }
+
+/** A list total; "10,000+" when the API stopped counting (meta.totalCapped). */
+export function formatTotal(
+	meta: { total: number; totalCapped?: boolean },
+	locale: Locale
+): string {
+	const n = new Intl.NumberFormat(intlLocale(locale)).format(meta.total);
+	return meta.totalCapped ? `${n}+` : n;
+}

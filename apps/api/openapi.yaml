@@ -77,8 +77,9 @@ components:
       properties:
         page: { type: integer }
         pageSize: { type: integer }
-        total: { type: integer }
-        totalPages: { type: integer }
+        total: { type: integer, description: 'Matches, counted up to 10,000 (see totalCapped)' }
+        totalPages: { type: integer, description: Pages that can be requested (lists can be paged 10,000 rows deep) }
+        totalCapped: { type: boolean, description: 'There are more than total matches; narrow the filters to reach them' }
 
     LocalizedText:
       type: object

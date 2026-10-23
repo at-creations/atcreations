@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageMeta } from '@atcreations/api-types';
+	import { formatTotal } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
 	import Select from './ui/Select.svelte';
@@ -25,7 +26,7 @@
 	aria-label={m.pagination_label()}
 	class="flex flex-col items-center justify-between gap-3 border-t border-zinc-200 px-4 py-3 text-sm text-zinc-600 sm:flex-row"
 >
-	<p>{m.pagination_showing({ start, end, total: meta.total })}</p>
+	<p>{m.pagination_showing({ start, end, total: formatTotal(meta) })}</p>
 	<div class="flex items-center gap-3">
 		{#if onpagesize}
 			<div class="flex items-center gap-2">

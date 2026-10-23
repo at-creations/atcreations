@@ -98,7 +98,7 @@ func (s *Service) ImportProduct(ctx context.Context, p *Product, mode ImportMode
 	}
 	p.FinalPriceCents = FinalPrice(p.PriceCents, p.DiscountPercent)
 	p.HasPrice = p.PriceCents != nil
-	p.Search = textx.SearchText(p.Name.EN, p.Name.VI, p.Description.EN, p.Description.VI)
+	p.SearchWords = productSearchWords(p.Name, p.Description)
 	p.SortNameEN = textx.Fold(p.Name.EN)
 	p.SortNameVI = textx.Fold(firstNonEmpty(p.Name.VI, p.Name.EN))
 	p.CategoryIDs = nonNil(dedupe(p.CategoryIDs))
