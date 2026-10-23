@@ -1,11 +1,11 @@
-import type { Category, CategoryInput } from '@atcreations/api-types';
+import type { AdminCategory, Category, CategoryInput } from '@atcreations/api-types';
 import {
 	createMutation,
 	queryOptions,
 	useQueryClient,
 	type QueryClient
 } from '@tanstack/svelte-query';
-import { api, unwrap, uploadWithProgress } from '$lib/api';
+import { api, unwrap } from '$lib/api';
 import { keys } from './keys';
 
 export function categoriesQuery() {
@@ -16,13 +16,13 @@ export function categoriesQuery() {
 	});
 }
 
-/** Insert or replace a category in the cached list, then mark dependants stale. */
+/** Insert or replace a category in the cached list (keeping its product count), then mark dependants stale. */
 export function putCategory(queryClient: QueryClient, category: Category) {
-	queryClient.setQueryData<Category[]>(keys.categories.all, (old) => {
+	queryClient.setQueryData<AdminCategory[]>(keys.categories.all, (old) => {
 		if (!old) return old;
 		return old.some((c) => c.id === category.id)
-			? old.map((c) => (c.id === category.id ? category : c))
-			: [...old, category];
+			? old.map((c) => (c.id === category.id ? { ...category, productCount: c.productCount } : c))
+			: [...old, { ...category, productCount: 0 }];
 	});
 	void queryClient.invalidateQueries({ queryKey: keys.categories.all });
 	// Products embed category names in their badges.
@@ -47,7 +47,7 @@ export function createDeleteCategoryMutation() {
 		mutationFn: (id: string) =>
 			unwrap(api().DELETE('/v1/admin/categories/{id}', { params: { path: { id } } })),
 		onSuccess: (_data, id) => {
-			queryClient.setQueryData<Category[]>(keys.categories.all, (old) =>
+			queryClient.setQueryData<AdminCategory[]>(keys.categories.all, (old) =>
 				old?.filter((c) => c.id !== id)
 			);
 			void queryClient.invalidateQueries({ queryKey: keys.categories.all });
@@ -57,28 +57,41 @@ export function createDeleteCategoryMutation() {
 	}));
 }
 
-export function createCategoryImageMutation() {
+export function createRemoveCategoryImageMutation() {
 	const queryClient = useQueryClient();
 	return createMutation(() => ({
-		mutationFn: async ({ id, file }: { id: string; file?: File }) => {
-			if (!file) {
-				return (
-					await unwrap(
-						api().DELETE('/v1/admin/categories/{id}/image', { params: { path: { id } } })
-					)
-				).data;
-			}
-			const form = new FormData();
-			form.append('file', file, file.name);
-			return uploadWithProgress<Category>(
-				'PUT',
-				`/v1/admin/categories/${encodeURIComponent(id)}/image`,
-				form
-			);
+		mutationFn: async (id: string) =>
+			(await unwrap(api().DELETE('/v1/admin/categories/{id}/image', { params: { path: { id } } })))
+				.data,
+		onSuccess: (category) => putCategory(queryClient, category)
+	}));
+}
+
+/** Save the display order. Optimistic: the list reorders at once and rolls back on failure. */
+export function createReorderCategoriesMutation() {
+	const queryClient = useQueryClient();
+	return createMutation(() => ({
+		mutationFn: async (ordered: AdminCategory[]) =>
+			(
+				await unwrap(
+					api().PUT('/v1/admin/categories/order', {
+						body: { categoryIds: ordered.map((c) => c.id) }
+					})
+				)
+			).data,
+		onMutate: async (ordered) => {
+			await queryClient.cancelQueries({ queryKey: keys.categories.all });
+			const previous = queryClient.getQueryData<AdminCategory[]>(keys.categories.all);
+			queryClient.setQueryData(keys.categories.all, ordered);
+			return { previous };
 		},
-		onSuccess: (category) => {
-			if (category) putCategory(queryClient, category);
-			else void queryClient.invalidateQueries({ queryKey: keys.categories.all });
+		onError: (_e, _v, context) => {
+			if (context?.previous) queryClient.setQueryData(keys.categories.all, context.previous);
+		},
+		onSuccess: (list) => {
+			queryClient.setQueryData(keys.categories.all, list);
+			// Product badges list categories in display order.
+			void queryClient.invalidateQueries({ queryKey: keys.products.lists() });
 		}
 	}));
 }

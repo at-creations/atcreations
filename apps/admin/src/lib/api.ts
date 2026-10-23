@@ -19,6 +19,16 @@ export function configureApi(options: { getToken: TokenGetter; onUnauthorized: (
 	onUnauthorized = options.onUnauthorized;
 }
 
+/** A fresh session token for requests made outside openapi-fetch (file uploads). */
+export function sessionToken(): Promise<string | null | undefined> {
+	return getToken();
+}
+
+/** Report a 401 seen outside openapi-fetch (ends the session like any other 401). */
+export function reportUnauthorized(): void {
+	onUnauthorized();
+}
+
 export function apiBaseUrl(): string {
 	return (env.PUBLIC_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
 }
@@ -60,45 +70,4 @@ export async function unwrap<T>(call: Promise<FetchResult<T>>): Promise<T> {
 		throw parseProblem(result.response.status, result.error);
 	}
 	return result.data as T;
-}
-
-/**
- * Multipart upload with progress events (fetch has no upload progress). Uses the same bearer
- * token, never cookies. Resolves with the parsed `data` member of the response envelope.
- */
-export async function uploadWithProgress<T>(
-	method: 'POST' | 'PUT',
-	path: string,
-	form: FormData,
-	onProgress?: (fraction: number) => void
-): Promise<T> {
-	const token = await getToken();
-	return new Promise<T>((resolve, reject) => {
-		const xhr = new XMLHttpRequest();
-		xhr.open(method, `${apiBaseUrl()}${path}`);
-		xhr.withCredentials = false;
-		xhr.responseType = 'text';
-		if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-		xhr.setRequestHeader('Accept', 'application/json');
-		xhr.upload.onprogress = (event) => {
-			if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
-		};
-		xhr.onerror = () => reject(new ApiError({ status: 0, title: 'Network error', errors: [] }));
-		xhr.onload = () => {
-			let body: unknown;
-			try {
-				body = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
-			} catch {
-				body = xhr.responseText;
-			}
-			if (xhr.status === 401) onUnauthorized();
-			if (xhr.status >= 200 && xhr.status < 300) {
-				onProgress?.(1);
-				resolve((body as { data: T } | undefined)?.data as T);
-			} else {
-				reject(parseProblem(xhr.status, body));
-			}
-		};
-		xhr.send(form);
-	});
 }

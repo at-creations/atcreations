@@ -1,228 +1,212 @@
 <script lang="ts">
-	import type { Category } from '@atcreations/api-types';
+	import type { AdminCategory } from '@atcreations/api-types';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { tick } from 'svelte';
-	import CategoryDialog from '$lib/components/categories/CategoryDialog.svelte';
+	import { resolve } from '$app/paths';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import SearchInput from '$lib/components/ui/SearchInput.svelte';
+	import Thumb from '$lib/components/ui/Thumb.svelte';
+	import Tip from '$lib/components/ui/Tip.svelte';
 	import { localized } from '$lib/i18n';
-	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
-	import {
-		categoriesQuery,
-		createCategoryImageMutation,
-		createDeleteCategoryMutation
-	} from '$lib/queries';
-	import { confirmAction } from '$lib/state/confirm.svelte';
+	import { categoriesQuery, createReorderCategoriesMutation } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
-	import { toast } from '$lib/state/toast.svelte';
-	import { checkImageFile, IMAGE_TYPES, MAX_IMAGE_MB } from '$lib/utils/files';
+	import { moveItem } from '$lib/utils/files';
 
 	const session = getAdminSession();
 	const canWrite = $derived(session.can('categories:write'));
 
-	const categoriesList = createQuery(() => categoriesQuery());
-	const deleteCategory = createDeleteCategoryMutation();
-	const categoryImage = createCategoryImageMutation();
-	const categories = $derived(categoriesList.data ?? []);
+	const list = createQuery(() => categoriesQuery());
+	const reorder = createReorderCategoriesMutation();
+	const categories = $derived(list.data ?? []);
 
-	let dialogOpen = $state(false);
-	let editing = $state<Category | null>(null);
-	let dialog = $state<ReturnType<typeof CategoryDialog>>();
-	let busyImage = $state<string | null>(null);
-
-	const sorted = $derived(
-		[...categories].sort((a, b) => a.sortOrder - b.sortOrder || a.name.en.localeCompare(b.name.en))
+	let search = $state('');
+	const query = $derived(search.trim().toLocaleLowerCase());
+	const visible = $derived(
+		query
+			? categories.filter((c) =>
+					[c.name.en, c.name.vi ?? '', c.slug].some((s) => s.toLocaleLowerCase().includes(query))
+				)
+			: categories
 	);
-	const nextSortOrder = $derived(
-		categories.reduce((max, c) => Math.max(max, c.sortOrder), -10) + 10
-	);
+	// Reordering only makes sense on the full list.
+	const canReorder = $derived(canWrite && !query && categories.length > 1);
 
-	async function openDialog(category: Category | null) {
-		editing = category;
-		await tick();
-		dialog?.reset();
-		dialogOpen = true;
-	}
+	let dragIndex = $state<number | null>(null);
+	let dropIndex = $state<number | null>(null);
+	let announcement = $state('');
 
-	async function remove(category: Category) {
-		const name = localized(category.name);
-		const ok = await confirmAction({
-			title: m.cat_delete_title(),
-			message: m.cat_delete_message({ name }),
-			confirmLabel: m.common_delete(),
-			danger: true
-		});
-		if (!ok) return;
+	async function move(from: number, to: number, focus = false) {
+		if (to < 0 || to >= categories.length || from === to || reorder.isPending) return;
+		const next = moveItem(categories, from, to);
 		try {
-			await deleteCategory.mutateAsync(category.id);
-			toast.success(m.cat_deleted({ name }));
+			await reorder.mutateAsync(next);
+			announcement = m.cat_order_saved();
+			if (focus) document.getElementById(`cat-move-${next[to]?.id}`)?.focus();
 		} catch (error) {
-			toastError(error, m.cat_delete_failed());
+			toastError(error, m.cat_order_failed());
 		}
 	}
 
-	async function uploadImage(category: Category, file: File | undefined) {
-		if (!file) return;
-		const rejection = checkImageFile(file);
-		if (rejection) {
-			toast.error(
-				rejection === 'type' ? m.img_invalid_type() : m.img_too_large({ size: MAX_IMAGE_MB })
-			);
-			return;
-		}
-		busyImage = category.id;
-		try {
-			await categoryImage.mutateAsync({ id: category.id, file });
-			toast.success(m.cat_image_uploaded());
-		} catch (error) {
-			toastError(error, m.cat_image_upload_failed());
-		} finally {
-			busyImage = null;
-		}
-	}
-
-	async function removeImage(category: Category) {
-		const ok = await confirmAction({
-			title: m.cat_image_remove_title(),
-			message: m.cat_image_remove_message(),
-			confirmLabel: m.cat_remove(),
-			danger: true
-		});
-		if (!ok) return;
-		busyImage = category.id;
-		try {
-			await categoryImage.mutateAsync({ id: category.id });
-			toast.success(m.cat_image_removed());
-		} catch (error) {
-			toastError(error, m.cat_image_remove_failed());
-		} finally {
-			busyImage = null;
-		}
-	}
+	const productsHref = (c: AdminCategory) => `${resolve('/products')}?category=${c.id}`;
 </script>
 
 <PageHeader title={m.nav_categories()}>
+	{#snippet meta()}
+		{#if list.data}
+			<span
+				class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 tabular-nums"
+				>{categories.length}</span
+			>
+		{/if}
+	{/snippet}
 	{#snippet actions()}
 		{#if canWrite}
-			<button type="button" class="btn-primary" onclick={() => openDialog(null)}>
+			<a class="btn-primary" href={resolve('/categories/new')}>
 				<Icon name="plus" size={16} />{m.cat_add()}
-			</button>
+			</a>
 		{/if}
 	{/snippet}
 </PageHeader>
 
-{#if categoriesList.isPending}
+{#if list.isPending}
 	<div class="card"><LoadState loading /></div>
-{:else if categoriesList.isError && !categoriesList.data}
+{:else if list.isError && !list.data}
 	<div class="card">
-		<LoadState
-			error={categoriesList.error}
-			fallback={m.cat_load_failed()}
-			onretry={() => categoriesList.refetch()}
-		/>
+		<LoadState error={list.error} fallback={m.cat_load_failed()} onretry={() => list.refetch()} />
 	</div>
-{:else if sorted.length === 0}
+{:else if categories.length === 0}
 	<div class="card">
-		<EmptyState icon="tag" title={m.cat_none()} />
+		<EmptyState icon="tag" title={m.cat_none()}>
+			{#if canWrite}
+				<a class="btn-primary" href={resolve('/categories/new')}
+					><Icon name="plus" size={16} />{m.cat_add()}</a
+				>
+			{/if}
+		</EmptyState>
 	</div>
 {:else}
-	<ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-		{#each sorted as category (category.id)}
-			{@const src = safeImageUrl(category.image?.url)}
-			{@const busy = busyImage === category.id}
-			<li class="flex flex-col overflow-hidden card">
-				<div class="relative aspect-[16/9] bg-zinc-100">
-					{#if src}
-						<img
-							{src}
-							alt={m.cat_image_alt({ name: localized(category.name) })}
-							class="h-full w-full object-cover"
-							loading="lazy"
-						/>
-					{:else}
-						<div class="flex h-full flex-col items-center justify-center gap-1 text-zinc-400">
-							<Icon name="image" size={28} />
-							<span class="text-xs">{m.cat_no_image()}</span>
-						</div>
-					{/if}
-					<span class="absolute top-2 left-2 badge bg-white/90 text-zinc-700"
-						>{m.cat_order_label({ order: category.sortOrder })}</span
+	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+		<SearchInput bind:value={search} class="sm:max-w-xs" placeholder={m.cat_search()} delay={0} />
+		{#if canReorder}
+			<p class="flex items-center gap-1.5 text-xs text-zinc-500">
+				<Icon name="grip" size={14} />{m.cat_drag_hint()}
+			</p>
+		{/if}
+	</div>
+	<p class="sr-only" aria-live="polite">{announcement}</p>
+
+	<div class={['overflow-hidden card', reorder.isPending && 'opacity-80']}>
+		{#if visible.length === 0}
+			<EmptyState icon="search" title={m.cat_no_results()} />
+		{:else}
+			<ol class="divide-y divide-zinc-100" aria-busy={reorder.isPending}>
+				{#each visible as category, index (category.id)}
+					<li
+						draggable={canReorder}
+						class={[
+							'group flex items-center gap-3 px-3 py-3 transition-colors sm:px-4',
+							dropIndex === index &&
+								dragIndex !== index &&
+								'bg-brand-50 ring-1 ring-brand-300 ring-inset',
+							dragIndex === index && 'opacity-40',
+							'hover:bg-zinc-50'
+						]}
+						ondragstart={(e) => {
+							dragIndex = index;
+							e.dataTransfer?.setData('text/plain', category.id);
+							if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+						}}
+						ondragover={(e) => {
+							if (dragIndex === null) return;
+							e.preventDefault();
+							dropIndex = index;
+						}}
+						ondragleave={() => {
+							if (dropIndex === index) dropIndex = null;
+						}}
+						ondrop={(e) => {
+							e.preventDefault();
+							if (dragIndex !== null && dragIndex !== index) void move(dragIndex, index);
+							dragIndex = dropIndex = null;
+						}}
+						ondragend={() => (dragIndex = dropIndex = null)}
 					>
-					{#if busy}
-						<div
-							class="absolute inset-0 flex items-center justify-center bg-white/70 text-sm"
-							role="status"
-						>
-							{m.cat_uploading()}
-						</div>
-					{/if}
-				</div>
-				<div class="flex flex-1 flex-col gap-2 p-4">
-					<div>
-						<h2 class="text-sm font-semibold text-zinc-900">{category.name.en}</h2>
-						{#if category.name.vi}<p class="text-sm text-zinc-600" lang="vi">
-								{category.name.vi}
-							</p>{/if}
-						<p class="font-mono text-xs text-zinc-400">{category.slug}</p>
-					</div>
-					<p class="line-clamp-3 text-sm text-zinc-700">{category.description.en}</p>
-					<p class="line-clamp-3 text-sm text-zinc-500" lang="vi">
-						{category.description.vi || m.cat_no_vi()}
-					</p>
-					{#if canWrite}
-						<div class="mt-auto flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-							<label
-								class={[
-									'btn-secondary btn-sm cursor-pointer focus-within:ring-2 focus-within:ring-brand-600',
-									busy && 'pointer-events-none opacity-50'
-								]}
+						{#if canReorder}
+							<span
+								class="hidden cursor-grab text-zinc-300 group-hover:text-zinc-500 active:cursor-grabbing sm:block"
+								aria-hidden="true"
 							>
-								<Icon name="upload" size={14} />
-								{src ? m.cat_change() : m.cat_upload()}
-								<input
-									type="file"
-									class="sr-only"
-									accept={IMAGE_TYPES.join(',')}
-									disabled={busy}
-									onchange={(e) => {
-										uploadImage(category, e.currentTarget.files?.[0]);
-										e.currentTarget.value = '';
-									}}
-								/>
-							</label>
-							{#if src}
+								<Icon name="grip" size={16} />
+							</span>
+						{/if}
+						<Thumb
+							src={category.image?.url}
+							class="size-12 sm:size-14"
+							rounded="rounded-xl"
+							alt=""
+						/>
+						<div class="min-w-0 flex-1">
+							<a
+								href={resolve(`/categories/${category.id}`)}
+								class="block truncate font-medium text-zinc-900 hover:text-brand-700"
+							>
+								{category.name.en}
+							</a>
+							<p class="truncate text-sm text-zinc-500">
+								{#if category.name.vi}<span lang="vi">{category.name.vi}</span> ·
+								{/if}<span class="font-mono text-xs">{category.slug}</span>
+							</p>
+						</div>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolved path + query -->
+						<a
+							href={productsHref(category)}
+							class="hidden shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 tabular-nums hover:bg-brand-100 hover:text-brand-800 sm:inline-block"
+						>
+							{m.cat_product_count({ count: category.productCount })}
+						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						{#if canReorder}
+							<div class="flex shrink-0 flex-col">
+								<button
+									id="cat-move-{category.id}"
+									type="button"
+									class="btn-icon btn-ghost size-6"
+									aria-label="{m.common_move_up()}: {localized(category.name)}"
+									disabled={index === 0 || reorder.isPending}
+									onclick={() => move(index, index - 1, true)}
+								>
+									<Icon name="up" size={14} />
+								</button>
 								<button
 									type="button"
-									class="btn-ghost btn-sm"
-									disabled={busy}
-									onclick={() => removeImage(category)}>{m.cat_remove()}</button
+									class="btn-icon btn-ghost size-6"
+									aria-label="{m.common_move_down()}: {localized(category.name)}"
+									disabled={index === visible.length - 1 || reorder.isPending}
+									onclick={() => move(index, index + 1, true)}
 								>
-							{/if}
-							<span class="flex-1"></span>
-							<button
-								type="button"
-								class="btn-secondary btn-sm"
-								onclick={() => openDialog(category)}
-							>
-								<Icon name="edit" size={14} />{m.common_edit()}
-							</button>
-							<button
-								type="button"
-								class="btn-ghost btn-sm text-red-600 hover:bg-red-50"
-								onclick={() => remove(category)}
-							>
-								<Icon name="trash" size={14} />{m.common_delete()}
-							</button>
-						</div>
-					{/if}
-				</div>
-			</li>
-		{/each}
-	</ul>
+									<Icon name="down" size={14} />
+								</button>
+							</div>
+						{/if}
+						<Tip text={m.common_edit()}>
+							{#snippet children({ props })}
+								<a
+									{...props}
+									href={resolve(`/categories/${category.id}`)}
+									class="btn-icon btn-ghost size-8 shrink-0"
+									aria-label="{m.common_edit()}: {localized(category.name)}"
+								>
+									<Icon name="right" size={16} />
+								</a>
+							{/snippet}
+						</Tip>
+					</li>
+				{/each}
+			</ol>
+		{/if}
+	</div>
 {/if}
-
-<CategoryDialog bind:this={dialog} bind:open={dialogOpen} category={editing} {nextSortOrder} />

@@ -32,6 +32,7 @@
 	--animate-slide-down: slide-down 0.18s ease-out both;
 	--animate-slide-in: slide-in 0.2s ease-out both;
 	--animate-fade-in: fade-in 0.15s ease-out both;
+	--animate-indeterminate: indeterminate 1.2s ease-in-out infinite;
 
 	@keyframes pop-in {
 		from {
@@ -41,6 +42,14 @@
 		to {
 			opacity: 1;
 			transform: scale(1);
+		}
+	}
+	@keyframes indeterminate {
+		from {
+			left: -33%;
+		}
+		to {
+			left: 100%;
 		}
 	}
 	@keyframes slide-in {

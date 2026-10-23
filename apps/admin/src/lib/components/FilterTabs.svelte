@@ -31,12 +31,15 @@
 <!-- A filter, not ARIA tabs: each button re-queries the list below. -->
 <ToggleGroup.Root
 	type="single"
-	value={value || ALL}
+	bind:value={
+		() => value || ALL,
+		(next) => {
+			// Always one tab selected: clicking the active one changes nothing.
+			if (!next || next === (value || ALL)) return;
+			onselect((next === ALL ? '' : next) as T | '');
+		}
+	}
 	aria-label={label}
-	onValueChange={(next) => {
-		if (!next) return;
-		onselect((next === ALL ? '' : next) as T | '');
-	}}
 	class="-mb-px flex gap-1 overflow-x-auto"
 >
 	{#each tabs as tab (tab.value)}

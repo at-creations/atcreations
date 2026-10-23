@@ -8,3 +8,4 @@ export * from './staff';
 export * from './store';
 export * from './audit';
 export * from './analytics';
+export * from './uploads';

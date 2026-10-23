@@ -1,28 +1,26 @@
 <script lang="ts">
-	import type { Image, Product } from '@atcreations/api-types';
-	import { useQueryClient } from '@tanstack/svelte-query';
-	import { uploadWithProgress } from '$lib/api';
+	import type { Image, Product, UploadJob } from '@atcreations/api-types';
+	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+	import { onDestroy, untrack } from 'svelte';
 	import Icon from '$lib/components/Icon.svelte';
-	import { describeError } from '$lib/i18n';
 	import { safeImageUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
 	import {
+		createCancelUploadMutation,
 		createRemoveImageMutation,
 		createReorderImagesMutation,
+		isActiveJob,
 		keys,
-		putProduct
+		uploadJobsQuery
 	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { toast } from '$lib/state/toast.svelte';
-	import {
-		checkImageFile,
-		IMAGE_TYPES,
-		MAX_IMAGE_MB,
-		MAX_PRODUCT_IMAGES,
-		moveItem
-	} from '$lib/utils/files';
+	import { uploadItems, type UploadItem } from '$lib/uploads/items';
+	import { MAX_UPLOAD_MB, Uploader, UPLOAD_TYPES } from '$lib/uploads/uploader.svelte';
+	import UploadTile from '$lib/uploads/UploadTile.svelte';
+	import { MAX_PRODUCT_IMAGES, moveItem } from '$lib/utils/files';
 
 	/** The cached product; every change goes back through the query cache. */
 	let { product }: { product: Product } = $props();
@@ -31,102 +29,62 @@
 	const queryClient = useQueryClient();
 	const reorder = createReorderImagesMutation();
 	const removeImg = createRemoveImageMutation();
+	const cancelUpload = createCancelUploadMutation('product', () => product.id);
 	const canEdit = $derived(session.can('products:write'));
 	const uid = $props.id();
 
-	type QueueStatus = 'queued' | 'uploading' | 'done' | 'failed';
-	interface QueueItem {
-		key: number;
-		file: File;
-		status: QueueStatus;
-		progress: number;
-		error?: string;
-	}
+	const jobs = createQuery(() => uploadJobsQuery('product', product.id));
 
-	let queue = $state<QueueItem[]>([]);
-	let uploading = $state(false);
+	// One uploader per product page (this component is keyed by product).
+	const uploader = new Uploader(
+		'product',
+		untrack(() => product.id),
+		(job, fileId) => {
+			// Show the server job right away (before the next poll) and retire the local tile.
+			queryClient.setQueryData<UploadJob[]>(keys.uploads.list('product', product.id), (list) =>
+				list?.some((j) => j.id === job.id) ? list : [...(list ?? []), job]
+			);
+			void queryClient.invalidateQueries({ queryKey: keys.uploads.list('product', product.id) });
+			uploader.dismiss(fileId);
+		}
+	);
+	onDestroy(() => uploader.destroy());
+
+	// When a job finishes, the product gains an image: refresh it.
+	let active = new Set<string>();
+	$effect(() => {
+		const list = jobs.data ?? [];
+		const now = new Set(list.filter(isActiveJob).map((j) => j.id));
+		const finished = [...active].filter((id) => !now.has(id));
+		active = now;
+		if (finished.length === 0) return;
+		untrack(() => {
+			void queryClient.invalidateQueries({ queryKey: keys.products.detail(product.id) });
+			void queryClient.invalidateQueries({ queryKey: keys.products.lists() });
+			const failed = list.filter((j) => finished.includes(j.id) && j.status === 'failed').length;
+			const done = finished.length - failed;
+			if (done > 0) toast.success(m.up_done_summary({ count: done }));
+			if (failed > 0) toast.error(m.img_failed_summary({ count: failed }));
+		});
+	});
+
 	const reordering = $derived(reorder.isPending);
 	let dragIndex = $state<number | null>(null);
 	let dropIndex = $state<number | null>(null);
 	let dropActive = $state(false);
 	let fileInput = $state<HTMLInputElement>();
 	let announcement = $state('');
-	let nextKey = 1;
 
 	const images = $derived(product.images);
-	const pendingCount = $derived(
-		queue.filter((q) => q.status === 'queued' || q.status === 'uploading').length
-	);
-	const remaining = $derived(MAX_PRODUCT_IMAGES - images.length - pendingCount);
-
-	function rejectionMessage(reason: 'type' | 'size' | 'count') {
-		if (reason === 'type') return m.img_invalid_type();
-		if (reason === 'size') return m.img_too_large({ size: MAX_IMAGE_MB });
-		return m.img_max_exceeded({ max: MAX_PRODUCT_IMAGES });
-	}
+	const items = $derived(uploadItems(uploader.files, jobs.data));
+	const inFlight = $derived(items.filter((i) => i.phase !== 'failed').length);
+	const remaining = $derived(MAX_PRODUCT_IMAGES - images.length - inFlight);
 
 	function addFiles(files: FileList | File[] | null | undefined) {
 		if (!files || !canEdit) return;
-		let slots = remaining;
-		const added: QueueItem[] = [];
-		for (const file of Array.from(files)) {
-			const reason = checkImageFile(file) ?? (slots <= 0 ? 'count' : null);
-			if (reason) {
-				added.push({
-					key: nextKey++,
-					file,
-					status: 'failed',
-					progress: 0,
-					error: rejectionMessage(reason)
-				});
-			} else {
-				slots--;
-				added.push({ key: nextKey++, file, status: 'queued', progress: 0 });
-			}
-		}
-		queue.push(...added);
-		void processQueue();
-	}
-
-	async function processQueue() {
-		if (uploading) return;
-		uploading = true;
-		let ok = 0;
-		let failed = 0;
-		try {
-			for (
-				let item = queue.find((q) => q.status === 'queued');
-				item;
-				item = queue.find((q) => q.status === 'queued')
-			) {
-				item.status = 'uploading';
-				item.progress = 0;
-				const form = new FormData();
-				form.append('file', item.file, item.file.name);
-				try {
-					const updated = await uploadWithProgress<Product>(
-						'POST',
-						`/v1/admin/products/${encodeURIComponent(product.id)}/images`,
-						form,
-						(fraction) => (item!.progress = Math.round(fraction * 100))
-					);
-					// Upload stays imperative (XHR progress); the response is the canonical product.
-					if (updated) await putProduct(queryClient, updated);
-					else await queryClient.invalidateQueries({ queryKey: keys.products.detail(product.id) });
-					item.status = 'done';
-					item.progress = 100;
-					ok++;
-				} catch (error) {
-					item.status = 'failed';
-					item.error = describeError(error).message;
-					failed++;
-				}
-			}
-		} finally {
-			uploading = false;
-		}
-		if (ok > 0) toast.success(m.img_uploaded_summary({ count: ok }));
-		if (failed > 0) toast.error(m.img_failed_summary({ count: failed }));
+		const list = Array.from(files);
+		const added = uploader.add(list, Math.max(remaining, 0));
+		if (added < list.length) toast.error(m.img_max_exceeded({ max: MAX_PRODUCT_IMAGES }));
 	}
 
 	async function saveOrder(next: Image[], focusIndex?: number) {
@@ -163,16 +121,15 @@
 		}
 	}
 
-	function statusText(item: QueueItem) {
-		switch (item.status) {
-			case 'queued':
-				return m.img_status_queued();
-			case 'uploading':
-				return m.img_status_uploading({ percent: item.progress });
-			case 'done':
-				return m.img_status_done();
-			default:
-				return m.img_status_failed({ reason: item.error ?? '' });
+	async function cancel(item: UploadItem) {
+		if (item.jobId) {
+			try {
+				await cancelUpload.mutateAsync(item.jobId);
+			} catch (error) {
+				toastError(error);
+			}
+		} else if (item.fileId) {
+			uploader.dismiss(item.fileId);
 		}
 	}
 </script>
@@ -219,7 +176,7 @@
 	<p class="sr-only" aria-live="polite">{announcement}</p>
 
 	<div class="p-5">
-		{#if images.length === 0}
+		{#if images.length === 0 && items.length === 0}
 			<button
 				type="button"
 				class="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 px-6 py-12 text-center transition-colors hover:border-brand-300 hover:bg-brand-50/50 disabled:pointer-events-none"
@@ -232,7 +189,7 @@
 					<Icon name="upload" size={20} />
 				</span>
 				<span class="text-sm font-medium text-zinc-700">{m.img_drop()}</span>
-				<span class="text-xs text-zinc-400">{m.img_specs({ size: MAX_IMAGE_MB })}</span>
+				<span class="text-xs text-zinc-400">{m.img_specs({ size: MAX_UPLOAD_MB })}</span>
 			</button>
 		{:else}
 			<ol class="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5" aria-busy={reordering}>
@@ -295,7 +252,7 @@
 										id="{uid}-img-{index}"
 										type="button"
 										class="btn-icon btn-ghost size-7"
-										aria-label="{m.common_move_up()} — {m.img_alt({ index: index + 1 })}"
+										aria-label="{m.img_move_earlier()} — {m.img_alt({ index: index + 1 })}"
 										disabled={index === 0 || reordering}
 										onclick={() => move(index, index - 1)}
 									>
@@ -304,7 +261,7 @@
 									<button
 										type="button"
 										class="btn-icon btn-ghost size-7"
-										aria-label="{m.common_move_down()} — {m.img_alt({ index: index + 1 })}"
+										aria-label="{m.img_move_later()} — {m.img_alt({ index: index + 1 })}"
 										disabled={index === images.length - 1 || reordering}
 										onclick={() => move(index, index + 1)}
 									>
@@ -321,6 +278,16 @@
 								</button>
 							</div>
 						{/if}
+					</li>
+				{/each}
+				{#each items as item (item.key)}
+					<li>
+						<UploadTile
+							{item}
+							oncancel={canEdit ? cancel : undefined}
+							onretry={(i) => i.fileId && uploader.retry(i.fileId)}
+							canRetry={(i) => !!i.fileId && uploader.canRetry(i.fileId)}
+						/>
 					</li>
 				{/each}
 				{#if canEdit && remaining > 0}
@@ -340,48 +307,6 @@
 				<p class="mt-3 text-xs text-zinc-500">{m.img_limit()}</p>
 			{/if}
 		{/if}
-
-		{#if queue.length > 0}
-			<div class="mt-4 rounded-xl bg-zinc-50 p-3">
-				<div class="mb-2 flex items-center justify-between">
-					<h3 class="text-xs font-semibold text-zinc-700">{m.img_queue_title()}</h3>
-					{#if !uploading}
-						<button
-							type="button"
-							class="text-xs text-zinc-500 hover:text-zinc-900"
-							onclick={() => (queue = [])}>{m.img_clear_queue()}</button
-						>
-					{/if}
-				</div>
-				<ul class="space-y-2" aria-live="polite">
-					{#each queue as item (item.key)}
-						<li class="text-xs">
-							<div class="flex items-center justify-between gap-2">
-								<span class="min-w-0 truncate text-zinc-700">{item.file.name}</span>
-								<span
-									class={[
-										'shrink-0',
-										item.status === 'failed' && 'text-rose-600',
-										item.status === 'done' && 'text-emerald-700',
-										(item.status === 'queued' || item.status === 'uploading') && 'text-zinc-500'
-									]}
-								>
-									{statusText(item)}
-								</span>
-							</div>
-							{#if item.status === 'uploading'}
-								<div class="mt-1 h-1 overflow-hidden rounded-full bg-zinc-200">
-									<div
-										class="h-full rounded-full bg-brand-400 transition-[width]"
-										style:width="{item.progress}%"
-									></div>
-								</div>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
 	</div>
 
 	{#if dropActive}
@@ -400,7 +325,7 @@
 			tabindex="-1"
 			aria-hidden="true"
 			multiple
-			accept={IMAGE_TYPES.join(',')}
+			accept={UPLOAD_TYPES.join(',')}
 			onchange={(e) => {
 				addFiles(e.currentTarget.files);
 				e.currentTarget.value = '';

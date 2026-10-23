@@ -37,15 +37,17 @@
 
 <ToggleGroup.Root
 	type="single"
-	{value}
+	bind:value={
+		() => value,
+		(next) => {
+			// A segmented control always has a selection: clicking the active item changes nothing.
+			if (!next || next === value) return;
+			value = next as T;
+			onchange?.(next as T);
+		}
+	}
 	{disabled}
 	aria-label={label}
-	onValueChange={(next) => {
-		// A segmented control always has a selection: ignore clicks on the active item.
-		if (!next) return;
-		value = next as T;
-		onchange?.(next as T);
-	}}
 	class={[
 		'inline-flex rounded-lg bg-zinc-100 p-0.5 data-[disabled]:pointer-events-none data-[disabled]:opacity-60',
 		full && 'flex w-full'

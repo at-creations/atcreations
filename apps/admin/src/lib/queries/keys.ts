@@ -56,6 +56,10 @@ export const keys = {
 		invitations: ['staff', 'invitations'] as const
 	},
 	storeInfo: ['store-info'] as const,
+	uploads: {
+		all: ['uploads'] as const,
+		list: (kind: 'product' | 'category', id: string) => ['uploads', kind, id] as const
+	},
 	analytics: {
 		all: ['analytics'] as const,
 		report: (days: AnalyticsDays) => ['analytics', 'report', days] as const
