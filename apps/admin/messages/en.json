@@ -415,11 +415,12 @@
 		}
 	],
 	"cmd_open": "Search",
-	"cmd_placeholder": "Search pages, products, orders",
+	"cmd_placeholder": "Search pages, products, categories, orders",
 	"cmd_label": "Command menu",
 	"cmd_pages": "Pages",
 	"cmd_actions": "Actions",
 	"cmd_products": "Products",
+	"cmd_categories": "Categories",
 	"cmd_orders": "Orders",
 	"cmd_review_pending": "Review pending orders",
 	"cmd_no_results": "No results",

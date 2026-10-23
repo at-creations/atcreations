@@ -6,7 +6,7 @@
 	import { localized } from '$lib/i18n';
 	import { NAV } from '$lib/nav';
 	import { m } from '$lib/paraglide/messages.js';
-	import { orderListQuery, productListQuery } from '$lib/queries';
+	import { categoriesQuery, orderListQuery, productListQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { formatCAD } from '$lib/utils/money';
 	import Icon, { type IconName } from './Icon.svelte';
@@ -37,12 +37,16 @@
 		enabled: open && searching && session.can('orders:read'),
 		placeholderData: keepPreviousData
 	}));
+	// Few enough to load whole (usually cached already) and match locally from the first keystroke.
+	const categories = createQuery(() => ({ ...categoriesQuery(), enabled: open }));
 
 	interface Item {
 		id: string;
 		label: string;
 		hint?: string;
 		icon?: IconName;
+		/** Show a thumbnail (with a placeholder when there is no image). */
+		thumb?: boolean;
 		image?: string;
 		status?:
 			| { kind: 'product'; value: 'draft' | 'published' | 'archived' }
@@ -50,9 +54,19 @@
 		href: string;
 	}
 
-	function matches(label: string) {
-		const q = query.trim().toLocaleLowerCase();
-		return !q || label.toLocaleLowerCase().includes(q);
+	/** Lowercase without accents, so "do len" finds "Đồ Len". */
+	function fold(text: string) {
+		return text
+			.normalize('NFD')
+			.replace(/\p{M}/gu, '')
+			.replace(/đ/g, 'd')
+			.replace(/Đ/g, 'D')
+			.toLocaleLowerCase();
+	}
+
+	function matches(...texts: (string | undefined)[]) {
+		const q = fold(query.trim());
+		return !q || texts.some((text) => !!text && fold(text).includes(q));
 	}
 
 	const pageItems = $derived<Item[]>(
@@ -70,6 +84,12 @@
 					label: m.dash_add_product(),
 					icon: 'plus' as const,
 					href: resolve('/products/new')
+				},
+				session.can('categories:write') && {
+					id: 'action:new-category',
+					label: m.cat_add(),
+					icon: 'plus' as const,
+					href: resolve('/categories/new')
 				},
 				session.can('staff:manage') && {
 					id: 'action:invite',
@@ -95,10 +115,27 @@
 					id: `product:${p.id}`,
 					label: localized(p.name),
 					hint: p.finalPriceCents === null ? undefined : formatCAD(p.finalPriceCents),
+					thumb: true,
 					image: p.images[0]?.url,
 					status: { kind: 'product' as const, value: p.status },
 					href: resolve(`/products/${p.id}`)
 				}))
+			: []
+	);
+
+	const categoryItems = $derived<Item[]>(
+		query.trim()
+			? (categories.data ?? [])
+					.filter((c) => matches(c.name.en, c.name.vi, c.slug))
+					.slice(0, 5)
+					.map((c) => ({
+						id: `category:${c.id}`,
+						label: localized(c.name),
+						hint: m.cat_product_count({ count: c.productCount }),
+						thumb: true,
+						image: c.image?.url,
+						href: resolve(`/categories/${c.id}`)
+					}))
 			: []
 	);
 
@@ -119,6 +156,7 @@
 		[
 			{ key: 'pages', heading: m.cmd_pages(), items: pageItems },
 			{ key: 'actions', heading: m.cmd_actions(), items: actionItems },
+			{ key: 'categories', heading: m.cmd_categories(), items: categoryItems },
 			{ key: 'products', heading: m.cmd_products(), items: productItems },
 			{ key: 'orders', heading: m.cmd_orders(), items: orderItems }
 		].filter((g) => g.items.length > 0)
@@ -197,7 +235,7 @@
 											onSelect={() => select(item)}
 											class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-700 outline-none data-[selected]:bg-brand-100 data-[selected]:text-brand-900"
 										>
-											{#if item.status?.kind === 'product'}
+											{#if item.thumb}
 												<Thumb src={item.image} class="size-7" rounded="rounded-md" iconSize={12} />
 											{:else if item.icon}
 												<span
