@@ -11,6 +11,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -153,14 +154,14 @@ func (s *Service) complete(ctx context.Context, log *slog.Logger, job *Job, res 
 		attachErr = s.owners.SetCategoryImageKey(ctx, job.OwnerID, img)
 	}
 
-	status, errMsg := StatusDone, ""
+	status, errMsg, code := StatusDone, "", ""
 	switch {
 	case attachErr == nil:
 	case errors.Is(attachErr, catalog.ErrOwnerGone):
 		status, errMsg = StatusCancelled, "deleted"
 		s.deleteObjects(ctx, res.GetOutputKey())
 	case errors.Is(attachErr, catalog.ErrImagesFull):
-		status, errMsg = StatusFailed, "image limit reached"
+		status, errMsg, code = StatusFailed, "image limit reached", CodeLimit
 		s.deleteObjects(ctx, res.GetOutputKey())
 	default:
 		// Database trouble: keep the processed output and retry the attachment later (the worker
@@ -170,7 +171,7 @@ func (s *Service) complete(ctx context.Context, log *slog.Logger, job *Job, res 
 	}
 	// The worker removed the original; delete again in case its cleanup failed (idempotent).
 	s.deleteObjects(ctx, job.SourceKey)
-	s.finish(ctx, log, job, status, errMsg)
+	s.finish(ctx, log, job, status, errMsg, code)
 }
 
 func (s *Service) handleFailure(ctx context.Context, log *slog.Logger, job *Job, err error) {
@@ -178,13 +179,13 @@ func (s *Service) handleFailure(ctx context.Context, log *slog.Logger, job *Job,
 	switch st.Code() {
 	case codes.InvalidArgument, codes.NotFound, codes.Unauthenticated, codes.PermissionDenied:
 		// Permanent: not an image, the original vanished, or a misconfigured token.
-		msg := st.Message()
+		msg, code := st.Message(), reason(st)
 		if st.Code() == codes.Unauthenticated || st.Code() == codes.PermissionDenied {
 			log.Error("image worker rejected the API's token; check WORKER_TOKEN")
-			msg = "image service unavailable"
+			msg, code = "image service unavailable", CodeUnavailable
 		}
 		s.deleteObjects(ctx, job.SourceKey)
-		s.finish(ctx, log, job, StatusFailed, msg)
+		s.finish(ctx, log, job, StatusFailed, msg, code)
 	case codes.ResourceExhausted:
 		// The worker is busy: not the job's fault, so this attempt does not count.
 		s.requeue(ctx, job, s.now().Add(jitter(5*time.Second)), "", true)
@@ -197,7 +198,7 @@ func (s *Service) retryLater(ctx context.Context, log *slog.Logger, job *Job, er
 	if job.Attempts >= s.opts.MaxAttempts {
 		log.Warn("giving up on upload", "err", err)
 		s.deleteObjects(ctx, job.SourceKey, job.OutputKey)
-		s.finish(ctx, log, job, StatusFailed, "processing failed, please upload again")
+		s.finish(ctx, log, job, StatusFailed, "processing failed, please upload again", CodeFailed)
 		return
 	}
 	log.Info("upload will be retried", "err", err)
@@ -217,10 +218,27 @@ func (s *Service) requeue(ctx context.Context, job *Job, at time.Time, msg strin
 	}
 }
 
-func (s *Service) finish(ctx context.Context, log *slog.Logger, job *Job, status, msg string) {
+// Error codes of failed jobs besides the image codes from the worker (media.Code*).
+const (
+	CodeLimit       = "limit"       // the product already has the maximum number of images
+	CodeUnavailable = "unavailable" // the image service refused the API (misconfiguration)
+	CodeFailed      = "failed"      // anything else, after retries
+)
+
+// reason returns the worker's ErrorInfo reason (a media.Code*), or CodeFailed.
+func reason(st *status.Status) string {
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.GetReason() != "" {
+			return info.GetReason()
+		}
+	}
+	return CodeFailed
+}
+
+func (s *Service) finish(ctx context.Context, log *slog.Logger, job *Job, status, msg, code string) {
 	now := s.now().UTC()
 	res, err := s.jobs.UpdateOne(context.WithoutCancel(ctx), s.owned(job), bson.M{"$set": bson.M{
-		"status": status, "error": msg, "stage": "", "percent": map[bool]int{true: 100}[status == StatusDone],
+		"status": status, "error": msg, "errorCode": code, "stage": "", "percent": map[bool]int{true: 100}[status == StatusDone],
 		"leaseOwner": "", "updatedAt": now, "finishedAt": now,
 	}})
 	if err != nil {

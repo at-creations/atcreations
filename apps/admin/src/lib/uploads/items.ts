@@ -1,5 +1,6 @@
 import type { UploadJob } from '@atcreations/api-types';
 import { m } from '$lib/paraglide/messages.js';
+import { uploadErrorMessage } from './errors';
 import type { LocalUpload } from './uploader.svelte';
 
 /** One tile in the upload strip: a file still being sent, or a job on the server. */
@@ -78,7 +79,7 @@ export function uploadItems(local: LocalUpload[], jobs: UploadJob[] | undefined)
 						: j.status === 'queued'
 							? m.up_queued()
 							: `${stageLabels[j.stage ?? 'waiting']?.() ?? m.up_processing()} · ${j.percent}%`,
-			error: j.status === 'failed' ? j.error : undefined,
+			error: j.status === 'failed' ? uploadErrorMessage(j.errorCode) : undefined,
 			canCancel: j.status === 'queued' || j.status === 'failed',
 			canRetry: false
 		});

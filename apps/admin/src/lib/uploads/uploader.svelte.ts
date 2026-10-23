@@ -2,6 +2,7 @@ import type { UploadJob } from '@atcreations/api-types';
 import Uppy from '@uppy/core';
 import XHRUpload from '@uppy/xhr-upload';
 import { apiBaseUrl, parseProblem, reportUnauthorized, sessionToken } from '$lib/api';
+import { MAX_UPLOAD_MB, uploadErrorCodeForStatus, uploadErrorMessage } from './errors';
 
 export type UploadKind = 'product' | 'category';
 
@@ -19,7 +20,7 @@ export const UPLOAD_TYPES = [
 	'.heic',
 	'.heif'
 ];
-export const MAX_UPLOAD_MB = 25;
+export { MAX_UPLOAD_MB };
 /** Files sent at once. The API buffers a few per instance; more would only queue there. */
 const PARALLEL = 3;
 
@@ -138,9 +139,12 @@ export class Uploader {
 			const f = file && this.#find(file.id);
 			if (!f) return;
 			f.state = 'error';
-			f.error = problemMessage(response?.body, response?.status) ?? error.message;
+			const code = uploadErrorCodeForStatus(response?.status);
+			f.error = code
+				? uploadErrorMessage(code)
+				: (problemMessage(response?.body, response?.status) ?? error.message);
 		});
-		this.#uppy.on('restriction-failed', (file, error) => {
+		this.#uppy.on('restriction-failed', (file) => {
 			// Uppy ids derive from the file itself: picking the same rejected file twice (or a
 			// duplicate of one already listed) must not add a second tile with the same id.
 			if (file && !this.#find(file.id))
@@ -150,7 +154,10 @@ export class Uploader {
 					size: file.size ?? 0,
 					progress: 0,
 					state: 'error',
-					error: error.message
+					// Only type and size are restricted; anything within the size limit has the wrong type.
+					error: uploadErrorMessage(
+						(file.size ?? 0) > MAX_UPLOAD_MB * 1024 * 1024 ? 'too_large' : 'unsupported'
+					)
 				});
 		});
 	}

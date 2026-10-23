@@ -412,7 +412,11 @@ components:
           description: While processing
         percent: { type: integer, minimum: 0, maximum: 100 }
         attempts: { type: integer }
-        error: { type: string, description: 'Why it failed, or "retrying" while waiting for another attempt' }
+        error: { type: string, description: 'Why it failed (English), or "retrying" while waiting for another attempt' }
+        errorCode:
+          type: string
+          enum: [unsupported, unreadable, too_large, dimensions, limit, unavailable, failed]
+          description: Stable reason of a failed job, for clients to show their own wording
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

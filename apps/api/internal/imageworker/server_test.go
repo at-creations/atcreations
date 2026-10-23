@@ -11,6 +11,7 @@ import (
 	"net"
 	"testing"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	imagingv1 "github.com/atcreations/atcreations/apps/api/internal/gen/imaging/v1"
+	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/media/mediatest"
 )
 
@@ -190,5 +192,29 @@ func TestProcessImageRequiresToken(t *testing.T) {
 	bad := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer wrong")
 	if _, _, err := run(t, c, bad, req("uploads/a.png", "products/a.webp")); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("wrong token: err = %v", err)
+	}
+}
+
+func TestProcessImageReportsErrorCode(t *testing.T) {
+	store := mediatest.New()
+	damaged := pngBytes(t, 200, 200)
+	_ = store.Put(context.Background(), "uploads/products/p1/cut.png", damaged[:len(damaged)/2], "image/png")
+	c := start(t, store)
+	_, _, err := run(t, c, authed(), req("uploads/products/p1/cut.png", "products/p1/j1.webp"))
+	st := status.Convert(err)
+	if st.Code() != codes.InvalidArgument {
+		t.Fatalf("err = %v, want InvalidArgument", err)
+	}
+	var reason string
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			reason = info.GetReason()
+		}
+	}
+	if reason != media.CodeUnreadable {
+		t.Fatalf("reason = %q, want %q", reason, media.CodeUnreadable)
+	}
+	if store.Has("uploads/products/p1/cut.png") {
+		t.Fatal("damaged original must be deleted")
 	}
 }

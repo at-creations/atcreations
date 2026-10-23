@@ -68,6 +68,7 @@ type Job struct {
 	LeaseUntil    time.Time     `bson:"leaseUntil"`
 	LeaseOwner    string        `bson:"leaseOwner,omitempty"`
 	Error         string        `bson:"error,omitempty"`
+	ErrorCode     string        `bson:"errorCode,omitempty"`
 	CreatedBy     string        `bson:"createdBy"`
 	CreatedAt     time.Time     `bson:"createdAt"`
 	UpdatedAt     time.Time     `bson:"updatedAt"`
@@ -84,6 +85,7 @@ type JobDTO struct {
 	Percent   int       `json:"percent"`
 	Attempts  int       `json:"attempts"`
 	Error     string    `json:"error,omitempty"`
+	ErrorCode string    `json:"errorCode,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -91,7 +93,7 @@ type JobDTO struct {
 func (j *Job) DTO() JobDTO {
 	return JobDTO{
 		ID: j.ID.Hex(), FileName: j.FileName, Size: j.Size, Status: j.Status, Stage: j.Stage,
-		Percent: j.Percent, Attempts: j.Attempts, Error: j.Error, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
+		Percent: j.Percent, Attempts: j.Attempts, Error: j.Error, ErrorCode: j.ErrorCode, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
 	}
 }
 

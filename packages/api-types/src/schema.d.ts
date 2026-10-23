@@ -2212,8 +2212,13 @@ export interface components {
             stage?: "waiting" | "downloading" | "decoding" | "resizing" | "encoding" | "uploading";
             percent: number;
             attempts: number;
-            /** @description Why it failed, or "retrying" while waiting for another attempt */
+            /** @description Why it failed (English), or "retrying" while waiting for another attempt */
             error?: string;
+            /**
+             * @description Stable reason of a failed job, for clients to show their own wording
+             * @enum {string}
+             */
+            errorCode?: "unsupported" | "unreadable" | "too_large" | "dimensions" | "limit" | "unavailable" | "failed";
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */

@@ -193,3 +193,31 @@ func TestNewKeyShape(t *testing.T) {
 		t.Fatalf("unexpected key %q", k)
 	}
 }
+
+func TestProcessReportsDamagedImages(t *testing.T) {
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, 400, 400)), nil); err != nil {
+		t.Fatal(err)
+	}
+	// A valid header followed by truncated data: the format is fine, the file is not.
+	_, err := Process(context.Background(), b.Bytes()[:b.Len()/3], Options{})
+	if !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("err = %v, want ErrUnreadable", err)
+	}
+	if code := ErrorCode(err); code != CodeUnreadable {
+		t.Fatalf("ErrorCode = %q, want %q", code, CodeUnreadable)
+	}
+}
+
+func TestErrorCode(t *testing.T) {
+	for err, want := range map[error]string{
+		ErrUnsupported:             CodeUnsupported,
+		ErrTooLarge:                CodeTooLarge,
+		ErrDimensions:              CodeDimensions,
+		errors.New("disk on fire"): "",
+	} {
+		if got := ErrorCode(err); got != want {
+			t.Errorf("ErrorCode(%v) = %q, want %q", err, got, want)
+		}
+	}
+}

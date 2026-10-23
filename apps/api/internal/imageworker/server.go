@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -99,7 +100,7 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 		return status.Error(codes.NotFound, "original not found")
 	case errors.Is(err, media.ErrTooLarge):
 		s.discard(ctx, log, req.GetSourceKey())
-		return status.Error(codes.InvalidArgument, "file too large")
+		return rejected(media.CodeTooLarge, "file too large")
 	case err != nil:
 		log.Warn("read original failed", "err", err)
 		return transient(ctx, err)
@@ -124,7 +125,11 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 		if errors.As(err, &invalid) {
 			// Not a usable image: it can never succeed, so remove the original now.
 			s.discard(ctx, log, req.GetSourceKey())
-			return status.Error(codes.InvalidArgument, invalid.Detail)
+			msg := invalid.Detail
+			if len(invalid.Fields) > 0 {
+				msg = invalid.Fields[0].Message
+			}
+			return rejected(media.ErrorCode(err), msg)
 		}
 		log.Warn("processing failed", "err", err)
 		return transient(ctx, err)
@@ -249,4 +254,19 @@ func RecoverUnary(ctx context.Context, req any, info *grpc.UnaryServerInfo, hand
 func RecoverStream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
 	defer recovered(ss.Context(), info.FullMethod, &err)
 	return handler(srv, ss)
+}
+
+// ErrorDomain qualifies the ErrorInfo reasons this worker reports.
+const ErrorDomain = "imaging.atcreations.ca"
+
+// rejected reports a file that can never be processed. The stable code (see media.ErrorCode)
+// travels as an ErrorInfo reason so the API does not have to parse the message.
+func rejected(code, msg string) error {
+	st := status.New(codes.InvalidArgument, msg)
+	if code != "" {
+		if detailed, err := st.WithDetails(&errdetails.ErrorInfo{Reason: code, Domain: ErrorDomain}); err == nil {
+			st = detailed
+		}
+	}
+	return st.Err()
 }

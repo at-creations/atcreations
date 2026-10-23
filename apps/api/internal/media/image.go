@@ -5,6 +5,7 @@ package media
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -75,8 +76,34 @@ type Processed struct {
 var (
 	ErrTooLarge    = httpx.NewError(http.StatusRequestEntityTooLarge, "image must be 25 MB or smaller")
 	ErrUnsupported = httpx.NewError(http.StatusUnsupportedMediaType, "image must be a JPEG, PNG, WebP or HEIC file")
-	ErrDimensions  = httpx.Validation(httpx.FieldError{Field: "file", Message: "image dimensions are too large (max 50 megapixels, 8-bit color)"})
+	// ErrUnreadable is a file whose header is a supported image but whose data cannot be decoded
+	// (truncated or corrupted).
+	ErrUnreadable = httpx.NewError(http.StatusUnprocessableEntity, "image file is damaged or incomplete")
+	ErrDimensions = httpx.Validation(httpx.FieldError{Field: "file", Message: "image dimensions are too large (max 50 megapixels, 8-bit color)"})
 )
+
+// Stable codes for image errors, reported on upload jobs so clients can show their own wording.
+const (
+	CodeUnsupported = "unsupported"
+	CodeUnreadable  = "unreadable"
+	CodeTooLarge    = "too_large"
+	CodeDimensions  = "dimensions"
+)
+
+// ErrorCode returns the stable code of an image validation error, or "" for any other error.
+func ErrorCode(err error) string {
+	switch {
+	case errors.Is(err, ErrUnsupported):
+		return CodeUnsupported
+	case errors.Is(err, ErrUnreadable):
+		return CodeUnreadable
+	case errors.Is(err, ErrTooLarge):
+		return CodeTooLarge
+	case errors.Is(err, ErrDimensions):
+		return CodeDimensions
+	}
+	return ""
+}
 
 // Inspect checks the real format and dimensions from the file header without decoding the
 // pixels (never trusting the client's filename or Content-Type). Uploads are inspected before
@@ -141,7 +168,8 @@ func Process(ctx context.Context, raw []byte, opts Options) (*Processed, error) 
 	stage(StageDecoding)
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return nil, ErrUnsupported
+		// The header was valid (Inspect passed), so the data itself is damaged.
+		return nil, ErrUnreadable
 	}
 	if format == "jpeg" {
 		img = applyOrientation(img, jpegOrientation(raw))
