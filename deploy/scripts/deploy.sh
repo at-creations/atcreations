@@ -12,7 +12,7 @@ CURRENT_TAG="$(grep -E '^TAG=' .env | cut -d= -f2- || true)"
 
 # Pull first, without touching .env: a failed pull leaves the running
 # configuration exactly as it was.
-TAG="$NEW_TAG" docker compose pull api storefront admin
+TAG="$NEW_TAG" docker compose pull api imgworker storefront admin
 
 set_tag() { sed -i "s/^TAG=.*/TAG=$1/" .env; }
 set_tag "$NEW_TAG"

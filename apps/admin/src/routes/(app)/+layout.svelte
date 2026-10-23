@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
 	import { Dialog } from 'bits-ui';
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { useClerkContext } from 'svelte-clerk';
 	import { afterNavigate } from '$app/navigation';
@@ -24,7 +24,9 @@
 
 	const clerk = useClerkContext();
 	// One cache per browser session (this layout lives for the whole signed-in session; SSR is off).
-	const queryClient = createAdminQueryClient();
+	const disposal = new AbortController();
+	onDestroy(() => disposal.abort());
+	const queryClient = createAdminQueryClient(disposal.signal);
 
 	// The server already verified the session (hooks.server.ts); its user id lets us paint the
 	// shell from the last known /me while Clerk's script is still loading.
@@ -74,7 +76,11 @@
 
 	configureApi({
 		getToken: async () => {
-			await Promise.race([clerkReady, new Promise((r) => setTimeout(r, 15_000))]);
+			if (!clerk.isLoaded) {
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				await Promise.race([clerkReady, new Promise((r) => (timer = setTimeout(r, 15_000)))]);
+				clearTimeout(timer);
+			}
 			return (await clerk.session?.getToken()) ?? null;
 		},
 		onUnauthorized: () => {

@@ -28,6 +28,12 @@ describe('safeRedirectPath', () => {
 		expect(safeRedirectPath('/%5Cevil.com')).toBe('/');
 		expect(safeRedirectPath('/%E0%A4%A')).toBe('/');
 	});
+	it('rejects dot segments that resolve to a protocol-relative path', () => {
+		expect(safeRedirectPath('/.//evil.com')).toBe('/');
+		expect(safeRedirectPath('/a/..//evil.com')).toBe('/');
+		expect(safeRedirectPath('/%2e//evil.com')).toBe('/');
+		expect(safeRedirectPath('/%2e%2e//evil.com')).toBe('/');
+	});
 	it('rejects control characters', () => {
 		expect(safeRedirectPath('/\tevil')).toBe('/');
 		expect(safeRedirectPath('/\nfoo')).toBe('/');

@@ -2,6 +2,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import XCircle from '@lucide/svelte/icons/circle-x';
 	import Mail from '@lucide/svelte/icons/mail';
+	import { untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath, t } from '$lib/i18n';
 	import { productsHref } from '$lib/urls';
@@ -58,8 +59,10 @@
 
 	// Fire-and-forget view counter, once per product shown (also on client-side navigation
 	// between products). Errors (network, 404, 429) are deliberately ignored.
+	// Depends on the id only, so new data for the same product (e.g. a locale switch) doesn't count again.
+	const productId = $derived(product.id);
 	$effect(() => {
-		const endpoint = `${data.config.publicApiUrl}/v1/products/${encodeURIComponent(product.id)}/views`;
+		const endpoint = `${untrack(() => data.config.publicApiUrl)}/v1/products/${encodeURIComponent(productId)}/views`;
 		fetch(endpoint, { method: 'POST', credentials: 'omit', keepalive: true, mode: 'cors' }).catch(
 			() => {}
 		);

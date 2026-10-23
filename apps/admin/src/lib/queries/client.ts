@@ -29,9 +29,9 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
 /**
  * One client per browser session (created by the authenticated layout; SSR is off).
  * Any successful mutation marks the audit log stale, since every write is audited, and is
- * broadcast to the admin's other tabs.
+ * broadcast to the admin's other tabs. Aborting `signal` closes the tab sync and listeners.
  */
-export function createAdminQueryClient(): QueryClient {
+export function createAdminQueryClient(signal?: AbortSignal): QueryClient {
 	const client: QueryClient = new QueryClient({
 		defaultOptions: {
 			queries: {
@@ -60,12 +60,17 @@ export function createAdminQueryClient(): QueryClient {
 			// Active queries refetch now; inactive ones on their next use.
 			if (event.data === SYNC_MESSAGE) void client.invalidateQueries();
 		};
+		signal?.addEventListener('abort', () => sync.close());
 	}
 	if (typeof window !== 'undefined') {
 		// A tab restored from the back/forward cache may hold old data.
-		window.addEventListener('pageshow', (event) => {
-			if (event.persisted) void client.invalidateQueries();
-		});
+		window.addEventListener(
+			'pageshow',
+			(event) => {
+				if (event.persisted) void client.invalidateQueries();
+			},
+			{ signal }
+		);
 	}
 	return client;
 }

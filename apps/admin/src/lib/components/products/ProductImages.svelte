@@ -123,6 +123,9 @@
 
 	async function cancel(item: UploadItem) {
 		if (item.jobId) {
+			// A cancelled job leaves the list like a finished one: don't report it as added.
+			const cancelled = item.jobId;
+			active = new Set([...active].filter((id) => id !== cancelled));
 			try {
 				await cancelUpload.mutateAsync(item.jobId);
 			} catch (error) {

@@ -1,4 +1,4 @@
-import { redirect, type Handle } from '@sveltejs/kit';
+import { isRedirect, redirect, type Handle } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { withClerkHandler } from 'svelte-clerk/server';
 import { cookieMaxAge, cookieName, getTextDirection, locales } from '$lib/paraglide/runtime.js';
@@ -69,8 +69,15 @@ const i18n: Handle = ({ event, resolve }) =>
 		});
 	});
 
+// Runs first, so redirects thrown by the guards below get these headers too.
 const securityHeaders: Handle = async ({ event, resolve }) => {
-	const response = await resolve(event);
+	let response: Response;
+	try {
+		response = await resolve(event);
+	} catch (error) {
+		if (!isRedirect(error)) throw error;
+		response = new Response(null, { status: error.status, headers: { location: error.location } });
+	}
 	const h = response.headers;
 	h.set('X-Content-Type-Options', 'nosniff');
 	h.set('Referrer-Policy', 'same-origin');
@@ -86,9 +93,9 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
 };
 
 export const handle: Handle = sequence(
+	securityHeaders,
 	localePrefix,
 	withClerkHandler(),
 	authGuard,
-	securityHeaders,
 	i18n
 );

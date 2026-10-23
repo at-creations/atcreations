@@ -26,6 +26,8 @@ export function safeRedirectPath(input: string | null | undefined, fallback = '/
 		return fallback;
 	}
 	if (url.origin !== base) return fallback;
+	// Dot segments are resolved by the parser ("/.//evil.com" → "//evil.com"), so check the result too.
+	if (url.pathname.startsWith('//')) return fallback;
 	const result = `${url.pathname}${url.search}${url.hash}`;
 	if (url.pathname === '/sign-in' || url.pathname.startsWith('/sign-in/')) return fallback;
 	return result;
