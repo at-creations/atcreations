@@ -124,6 +124,29 @@ func sortHours(in []BusinessHours) []BusinessHours {
 	return out
 }
 
+// Import replaces the store info (used by cmd/migrate); input is validated
+// with the same rules as the admin API.
+func (s *Service) Import(ctx context.Context, in Input) (StoreInfo, error) {
+	if err := httpx.Validate(&in); err != nil {
+		return StoreInfo{}, err
+	}
+	if err := in.validate(); err != nil {
+		return StoreInfo{}, err
+	}
+	info := StoreInfo{
+		Email: strings.TrimSpace(in.Email), Phone: strings.TrimSpace(in.Phone), Address: strings.TrimSpace(in.Address),
+		MapURL: in.MapURL, BusinessHours: sortHours(in.BusinessHours), UpdatedAt: time.Now().UTC(),
+	}
+	if info.BusinessHours == nil {
+		info.BusinessHours = []BusinessHours{}
+	}
+	if _, err := s.coll.ReplaceOne(ctx, bson.M{"_id": docID}, info, options.Replace().SetUpsert(true)); err != nil {
+		return StoreInfo{}, err
+	}
+	s.cache.Invalidate(ctx, redisx.NSStore)
+	return info, nil
+}
+
 func (s *Service) HandleGet(w http.ResponseWriter, r *http.Request) error {
 	info, err := s.Get(r.Context())
 	if err != nil {

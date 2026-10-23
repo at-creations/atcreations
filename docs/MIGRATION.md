@@ -1,4 +1,26 @@
-# Data migration notes (old → new)
+# Data migration (old → new)
+
+## Running it
+
+`apps/api/cmd/migrate` imports categories, products (with images) and store info from the legacy database. It only **reads** the legacy database (secondary-preferred) and downloads legacy images from the public CDN; it never writes to the old system.
+
+```bash
+cd apps/api
+export OLD_MONGO_URI='<legacy DATABASE_URL, with tlsCertificateKeyFile pointing at db-key.pem>'
+export MONGO_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true'   # target
+export REDIS_URL='redis://:dev-redis-password@127.0.0.1:6379/0'                    # optional
+export S3_ENDPOINT=http://127.0.0.1:9000 S3_BUCKET=atcreations-dev S3_ACCESS_KEY_ID=atcreations-dev S3_SECRET_ACCESS_KEY=dev-rustfs-secret-key
+export CDN_BASE_URL=http://localhost:9000/atcreations-dev
+go run ./cmd/migrate          # dry run: reads everything, checks every image, writes nothing
+go run ./cmd/migrate -apply   # migrate
+```
+
+- Re-runnable: categories and products keep their ids (replaced, not duplicated); images already migrated are reused (`migration_media` collection), so re-runs don't upload again.
+- Store info is only imported when the new system has none, so later edits are never overwritten.
+- Not migrated: users (invite staff via Clerk), refresh tokens, API keys, raw page views (they contain IP addresses; view totals are kept on products).
+
+## Field mapping
+
 
 The new system starts on a fresh MongoDB and a fresh R2 bucket. Nothing reads the old database or bucket. When you are ready to migrate, write a one-off script (e.g. `apps/api/cmd/migrate`) that reads an export of the old data and writes through the same validation rules. This page records the mapping.
 
