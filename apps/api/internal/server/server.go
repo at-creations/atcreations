@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 	httprateredis "github.com/go-chi/httprate-redis"
 	"github.com/redis/go-redis/v9"
@@ -74,14 +73,7 @@ func New(d Deps) http.Handler {
 		httpx.AccessLog,
 		httpx.Recover,
 		httpx.SecurityHeaders,
-		cors.Handler(cors.Options{
-			AllowedOrigins:   d.Config.CORSOrigins,
-			AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
-			AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Request-ID"},
-			ExposedHeaders:   []string{"X-Request-ID"},
-			AllowCredentials: false, // bearer tokens only; no cookies are ever used
-			MaxAge:           600,
-		}),
+		corsPolicies(d.Config.CORSPublicOrigins, d.Config.CORSAdminOrigins),
 		limit("global", 300, time.Minute), // per-IP ceiling
 	)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, httpx.ErrNotFound) })

@@ -25,6 +25,8 @@
 
 **Authentication** — Clerk session JWTs verified against Clerk JWKS (`clerk-sdk-go`), `azp` restricted to the admin origin (`CLERK_AUTHORIZED_PARTIES`), 5s leeway. No cookies are accepted by the API (`AllowCredentials: false`), which removes CSRF entirely.
 
+**CORS** — Two policies chosen by path before routing. `/v1/admin/*` accepts only `CORS_ADMIN_ORIGINS` (GET/POST/PUT/DELETE, `Authorization` allowed). The public API accepts `CORS_PUBLIC_ORIGINS` plus the admin origins (GET/POST only, no `Authorization`, so a storefront origin can never drive the admin API from a browser). No wildcard origins, never credentials; both lists are required and must be https in production.
+
 **Authorization** — `auth.Require(permission)` on every admin route; role from the session token's custom claim, or from the Clerk API (30s cache) when the claim is absent. A role change therefore takes effect when the user's current session token expires (Clerk default ≈60s); a **ban** revokes all sessions immediately, so ban first when removing access urgently. Staff management refuses self-modification and removing the last active admin (mutations are serialized in-process; the API is deployed as a single replica). Clerk outages surface as 503, not as sign-outs.
 
 **Concurrency** — Product edits use optimistic concurrency (`version`): a save based on stale data (including stock changed by an order) is rejected with 409 instead of overwriting live stock.

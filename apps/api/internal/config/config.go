@@ -18,8 +18,16 @@ type Config struct {
 	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8080"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
 
-	// Comma-separated origins allowed to call the API from a browser.
-	CORSOrigins []string `env:"CORS_ALLOWED_ORIGINS" envSeparator:","`
+	// Browser origins, comma separated. Public origins (the storefront) may
+	// call the public API; admin origins may call the admin API (and the
+	// public API, which the dashboard also reads).
+	CORSPublicOrigins []string `env:"CORS_PUBLIC_ORIGINS" envSeparator:","`
+	CORSAdminOrigins  []string `env:"CORS_ADMIN_ORIGINS" envSeparator:","`
+	// Deprecated: replaced by CORS_PUBLIC_ORIGINS / CORS_ADMIN_ORIGINS.
+	LegacyCORSOrigins string `env:"CORS_ALLOWED_ORIGINS"`
+
+	// Non-fatal configuration notices, logged at startup.
+	Warnings []string `env:"-"`
 	// CIDRs of reverse proxies whose X-Forwarded-For header is trusted.
 	TrustedProxies []string `env:"TRUSTED_PROXIES" envSeparator:"," envDefault:"127.0.0.1/32,::1/128"`
 
@@ -84,15 +92,24 @@ func (c *Config) validate() error {
 		errs = append(errs, fmt.Errorf("APP_ENV must be development|test|staging|production, got %q", c.Env))
 	}
 
-	c.CORSOrigins = trimAll(c.CORSOrigins)
-	for _, o := range c.CORSOrigins {
-		if o == "*" {
-			errs = append(errs, errors.New("CORS_ALLOWED_ORIGINS must list explicit origins, not *"))
-			continue
+	c.CORSPublicOrigins = trimAll(c.CORSPublicOrigins)
+	c.CORSAdminOrigins = trimAll(c.CORSAdminOrigins)
+	for name, origins := range map[string][]string{"CORS_PUBLIC_ORIGINS": c.CORSPublicOrigins, "CORS_ADMIN_ORIGINS": c.CORSAdminOrigins} {
+		if c.IsProduction() && len(origins) == 0 {
+			errs = append(errs, fmt.Errorf("%s is required in production", name))
 		}
-		if err := checkOrigin(o, c.IsProduction()); err != nil {
-			errs = append(errs, fmt.Errorf("CORS_ALLOWED_ORIGINS: %w", err))
+		for _, o := range origins {
+			if o == "*" {
+				errs = append(errs, fmt.Errorf("%s must list explicit origins, not *", name))
+				continue
+			}
+			if err := checkOrigin(o, c.IsProduction()); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			}
 		}
+	}
+	if c.LegacyCORSOrigins != "" {
+		c.Warnings = append(c.Warnings, "CORS_ALLOWED_ORIGINS is ignored; use CORS_PUBLIC_ORIGINS (storefront) and CORS_ADMIN_ORIGINS (admin dashboard)")
 	}
 	c.ClerkAuthorizedParties = trimAll(c.ClerkAuthorizedParties)
 	if c.IsProduction() && len(c.ClerkAuthorizedParties) == 0 {

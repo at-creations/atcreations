@@ -77,6 +77,9 @@ func run() error {
 		return err
 	}
 	setupLogging(cfg)
+	for _, w := range cfg.Warnings {
+		slog.Warn("configuration", "warning", w)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -17,7 +17,10 @@ func (noDirectory) Identity(context.Context, string) (auth.Identity, error) {
 }
 
 func testRouter() http.Handler {
-	cfg := &config.Config{CORSOrigins: []string{"https://admin.example.com"}}
+	cfg := &config.Config{
+		CORSPublicOrigins: []string{"https://shop.example.com"},
+		CORSAdminOrigins:  []string{"https://admin.example.com"},
+	}
 	return New(Deps{Config: cfg, Auth: auth.NewMiddleware(nil, noDirectory{})})
 }
 
@@ -55,21 +58,44 @@ func TestSecurityHeadersAndUnknownRoutes(t *testing.T) {
 	}
 }
 
-func TestCORSAllowsOnlyConfiguredOrigins(t *testing.T) {
+func preflight(h http.Handler, path, origin, method, headers string) http.Header {
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, path, nil)
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Access-Control-Request-Method", method)
+	if headers != "" {
+		req.Header.Set("Access-Control-Request-Headers", headers)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Header()
+}
+
+func TestCORSPolicies(t *testing.T) {
 	h := testRouter()
-	for origin, allowed := range map[string]bool{"https://admin.example.com": true, "https://evil.example": false} {
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/v1/admin/me", nil)
-		req.Header.Set("Origin", origin)
-		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
-		req.Header.Set("Access-Control-Request-Headers", "authorization")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		got := rec.Header().Get("Access-Control-Allow-Origin") == origin
-		if got != allowed {
-			t.Errorf("origin %s: allowed=%v, want %v", origin, got, allowed)
+	const shop, admin, evil = "https://shop.example.com", "https://admin.example.com", "https://evil.example"
+	cases := []struct {
+		name                         string
+		path, origin, method, header string
+		allowed                      bool
+	}{
+		{"admin origin → admin API", "/v1/admin/products", admin, http.MethodPut, "authorization,content-type", true},
+		{"storefront origin → admin API", "/v1/admin/me", shop, http.MethodGet, "authorization", false},
+		{"unknown origin → admin API", "/v1/admin/me", evil, http.MethodGet, "authorization", false},
+		{"storefront origin → public view counter", "/v1/products/x/views", shop, http.MethodPost, "", true},
+		{"admin origin → public store info", "/v1/store-info", admin, http.MethodGet, "", true},
+		{"unknown origin → public API", "/v1/products", evil, http.MethodGet, "", false},
+		{"public API never accepts Authorization", "/v1/products", shop, http.MethodGet, "authorization", false},
+		{"public API refuses DELETE", "/v1/products/x", shop, http.MethodDelete, "", false},
+		{"lookalike path is public, not admin", "/v1/administrator", admin, http.MethodPut, "authorization", false},
+	}
+	for _, c := range cases {
+		hdr := preflight(h, c.path, c.origin, c.method, c.header)
+		got := hdr.Get("Access-Control-Allow-Origin") == c.origin
+		if got != c.allowed {
+			t.Errorf("%s: allowed=%v, want %v", c.name, got, c.allowed)
 		}
-		if rec.Header().Get("Access-Control-Allow-Credentials") != "" {
-			t.Errorf("credentials must never be allowed")
+		if hdr.Get("Access-Control-Allow-Credentials") != "" {
+			t.Errorf("%s: credentials must never be allowed", c.name)
 		}
 	}
 }

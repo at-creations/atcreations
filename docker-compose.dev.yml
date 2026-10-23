@@ -96,7 +96,8 @@ services:
       REDIS_URL: redis://:dev-redis-password@redis:6379/0
       # Localhost origins always work; tunnel origins are added when configured
       # (empty list entries are ignored by the API).
-      CORS_ALLOWED_ORIGINS: http://localhost:${STOREFRONT_PORT:-5173},http://localhost:${ADMIN_PORT:-5174},${DEV_STOREFRONT_URL:-},${DEV_ADMIN_URL:-}
+      CORS_PUBLIC_ORIGINS: http://localhost:${STOREFRONT_PORT:-5173},${DEV_STOREFRONT_URL:-}
+      CORS_ADMIN_ORIGINS: http://localhost:${ADMIN_PORT:-5174},${DEV_ADMIN_URL:-}
       CLERK_AUTHORIZED_PARTIES: http://localhost:${ADMIN_PORT:-5174},${DEV_ADMIN_URL:-}
       CLERK_INVITE_REDIRECT_URL: ${DEV_ADMIN_URL:-http://localhost:${ADMIN_PORT:-5174}}/sign-up
       STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
