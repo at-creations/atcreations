@@ -64,6 +64,12 @@ type Config struct {
 	// Secret pepper for hashing order access codes and visitor fingerprints.
 	HashPepper string `env:"HASH_PEPPER,required,unset"`
 
+	// gRPC address of the image worker and the shared token it requires.
+	ImageWorkerAddr  string `env:"IMAGE_WORKER_ADDR" envDefault:"127.0.0.1:9090"`
+	ImageWorkerToken string `env:"IMAGE_WORKER_TOKEN,required,unset"`
+	// Upload jobs processed at once by this API instance.
+	UploadConcurrency int `env:"UPLOAD_CONCURRENCY" envDefault:"3"`
+
 	// IANA time zone that analytics days are counted in.
 	AnalyticsTimezone string         `env:"ANALYTICS_TIMEZONE" envDefault:"America/Vancouver"`
 	AnalyticsLocation *time.Location `env:"-"`
@@ -143,6 +149,12 @@ func (c *Config) validate() error {
 		errs = append(errs, errors.New("REDIS_URL is required in production"))
 	}
 
+	if len(c.ImageWorkerToken) < 32 {
+		errs = append(errs, errors.New("IMAGE_WORKER_TOKEN must be at least 32 characters (use `openssl rand -hex 32`)"))
+	}
+	if c.UploadConcurrency < 1 || c.UploadConcurrency > 16 {
+		errs = append(errs, errors.New("UPLOAD_CONCURRENCY must be 1-16"))
+	}
 	if len(c.HashPepper) < 32 {
 		errs = append(errs, errors.New("HASH_PEPPER must be at least 32 characters (use `openssl rand -hex 32`)"))
 	}

@@ -19,6 +19,9 @@
 # DEV_TUNNEL_HOSTS to the root .env; without them everything stays on localhost.
 name: atcreations-dev
 
+# Shared by the API and the image worker in development only (production generates one).
+x-dev-worker-token: &dev-worker-token dev-image-worker-token-0123456789abcdef
+
 x-web-watch-ignore: &web-watch-ignore
   - node_modules/
   - .svelte-kit/
@@ -86,7 +89,7 @@ services:
     restart: "no"
 
   api:
-    build: { context: ./apps/api }
+    build: { context: ./apps/api, target: api }
     env_file:
       - path: ./docker/dev/api.env
       - path: ./apps/api/.env # optional: real dev keys (Clerk, R2, SendGrid)
@@ -108,6 +111,8 @@ services:
       CDN_BASE_URL: ${DEV_MEDIA_ORIGIN:-http://localhost:${S3_PORT:-9000}}/atcreations-dev
       # Docker networks only: cloudflared and the storefront set X-Forwarded-For.
       TRUSTED_PROXIES: 172.16.0.0/12
+      IMAGE_WORKER_ADDR: imgworker:9090
+      IMAGE_WORKER_TOKEN: *dev-worker-token
     ports: ["127.0.0.1:${API_PORT:-8080}:8080"]
     read_only: true
     tmpfs: ["/tmp"]
@@ -118,6 +123,29 @@ services:
     develop:
       watch:
         # Go builds in seconds: rebuild and restart the container on change.
+        - action: rebuild
+          path: ./apps/api
+          ignore: [bin/, .env, openapi.yaml]
+
+  # Turns uploaded originals into WebP (gRPC, internal network only). Storage access only.
+  imgworker:
+    build: { context: ./apps/api, target: imgworker }
+    # Same storage settings as the API (RustFS, or a real bucket from apps/api/.env).
+    env_file:
+      - path: ./docker/dev/api.env
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      WORKER_TOKEN: *dev-worker-token
+      WORKER_CONCURRENCY: "2"
+      GOMEMLIMIT: 700MiB
+    mem_limit: 1g
+    read_only: true
+    tmpfs: ["/tmp"]
+    depends_on:
+      rustfs-init: { condition: service_completed_successfully }
+    develop:
+      watch:
         - action: rebuild
           path: ./apps/api
           ignore: [bin/, .env, openapi.yaml]

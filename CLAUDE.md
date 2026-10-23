@@ -6,7 +6,7 @@ Storefront (catalogue) + admin dashboard + API for AT Creations. Read `docs/ARCH
 
 | Path | What | Stack |
 |---|---|---|
-| `apps/api` | HTTP API, `openapi.yaml` is the contract | Go 1.27, chi, mongo-driver v2, go-redis v9, clerk-sdk-go v2, R2 via S3 API |
+| `apps/api` | HTTP API (`cmd/api`, `openapi.yaml` is the contract) and the image worker (`cmd/imgworker`, gRPC) | Go 1.27, chi, mongo-driver v2, go-redis v9, clerk-sdk-go v2, R2 via S3 API, gRPC |
 | `apps/storefront` | Public catalogue (SSR, en/vi) | SvelteKit 2, Svelte 5 runes, Tailwind 4, Paraglide |
 | `apps/admin` | Staff dashboard | SvelteKit 2, Svelte 5, svelte-clerk, TanStack Query v6 |
 | `packages/api-types` | TS types generated from `openapi.yaml` | openapi-typescript |
@@ -34,7 +34,8 @@ pnpm -r check && pnpm -r lint && pnpm -r test && pnpm -r build
 - **Decode JSON with `httpx.DecodeJSON`** (rejects unknown fields → no mass assignment). Escape user text in regexes with `mongox.ContainsPattern`. Never build Mongo filters from raw maps of request data.
 - **Catalogue/store writes must invalidate the Redis cache** (`s.cache.Invalidate(ctx, redisx.NSCatalog)` / `NSStore`). Redis holds only ephemeral data and every use must fail open.
 - **Admin data fetching goes through TanStack Query** (`apps/admin/src/lib/queries`): use the query-key factory and invalidate/set queries after mutations.
-- **Uploads only via `media.Process`** (sniffs, size/pixel limits, re-encodes). Object keys are random; never use client filenames.
+- **Image uploads go through `internal/uploads`** (staging + durable job queue) and the gRPC image worker (`cmd/imgworker`, `internal/imageworker`), which decodes with limits, applies EXIF orientation and re-encodes to WebP via `media.Process`. Object keys are random or job-derived; never use client filenames. Every path must remove the original (worker on success/invalid, API on cancel/give-up, `Sweep` for leftovers).
+- **gRPC contract first:** edit `apps/api/proto/`, then `go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate` in `apps/api` (commit `internal/gen`).
 - Svelte: runes only; never `{@html}` with API data; run the Svelte autofixer on changed components.
 - Secrets live in `.env` / `deploy/env/*.env` / `deploy/secrets/` / `docker/dev/cloudflared/` (cert.pem, credentials.json) — never read, print or commit them.
 - The `clerk-backend-api` skill executes live API calls (including deletes). Only use it with a development (`sk_test_`) key and confirm before any mutation.

@@ -6,6 +6,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -68,5 +69,53 @@ func TestS3StorageAgainstRustFS(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
 		t.Fatalf("object still served after delete: %d", resp.StatusCode)
+	}
+}
+
+func TestS3StorageGetHeadAndPrivateUploads(t *testing.T) {
+	endpoint := os.Getenv("S3_TEST_ENDPOINT")
+	if endpoint == "" {
+		t.Skip("S3_TEST_ENDPOINT not set")
+	}
+	s := NewS3Storage(S3Config{
+		Endpoint: endpoint, Region: "us-east-1", Bucket: "atcreations-dev",
+		AccessKeyID: "atcreations-dev", SecretAccessKey: "dev-rustfs-secret-key",
+		PublicBaseURL: endpoint + "/atcreations-dev",
+	})
+	ctx := context.Background()
+	key := NewKey(UploadsPrefix+"it-"+NewID(), "png")
+	err := s.PutObject(ctx, PutInput{Key: key, Data: []byte("original"), ContentType: "application/octet-stream",
+		Metadata: map[string]string{"width": "10"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Delete(context.Background(), key) })
+
+	data, err := s.Get(ctx, key, 1<<20)
+	if err != nil || string(data) != "original" {
+		t.Fatalf("Get = %q, %v", data, err)
+	}
+	if _, err := s.Get(ctx, key, 3); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("Get over the limit: err = %v, want ErrTooLarge", err)
+	}
+	info, err := s.Head(ctx, key)
+	if err != nil || info.Size != 8 || info.Metadata["width"] != "10" {
+		t.Fatalf("Head = %+v, %v", info, err)
+	}
+	if _, err := s.Get(ctx, key+"-missing", 1<<20); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("Get missing: err = %v", err)
+	}
+	if _, err := s.Head(ctx, key+"-missing"); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("Head missing: err = %v", err)
+	}
+
+	// Originals in the staging area must never be publicly readable.
+	resp, err := http.Get(s.URL(key)) //nolint:gosec,noctx // test against local RustFS
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("uploads/ objects must not be served publicly")
 	}
 }

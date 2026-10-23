@@ -681,7 +681,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/products/{id}/images": {
+    "/v1/admin/products/{id}/uploads": {
         parameters: {
             query?: never;
             header?: never;
@@ -690,9 +690,39 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** Uploads in progress, failed (until dismissed) and finished in the last minute */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["UploadJob"][];
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
-        /** Upload one image (JPEG/PNG/WebP, ≤10 MB, ≤40 MP; re-encoded, metadata stripped). Max 10 per product. */
+        /**
+         * Upload one image for processing (products:write). Send several requests in parallel for several files.
+         * @description JPEG, PNG, WebP or HEIC, up to 25 MB and 50 megapixels. The header is checked at once; the file is
+         *     then converted to WebP (longest edge 2400 px, EXIF orientation applied, metadata stripped) by the
+         *     image worker. Poll the list endpoint for progress. Counts toward the 10-image limit while pending.
+         *     On 429 or 503 retry after `Retry-After`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -707,29 +737,72 @@ export interface paths {
                     "multipart/form-data": {
                         /** Format: binary */
                         file: string;
-                        altEn?: string;
-                        altVi?: string;
                     };
                 };
             };
             responses: {
-                /** @description Created */
-                201: {
+                /** @description Queued */
+                202: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Product"];
+                            data: components["schemas"]["UploadJob"];
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
                 413: components["responses"]["Problem"];
                 415: components["responses"]["Problem"];
                 422: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+                503: components["responses"]["Problem"];
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/{id}/uploads/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                jobId: components["schemas"]["ObjectID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a queued upload (its original is deleted) or dismiss a failed one (products:write) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    jobId: components["schemas"]["ObjectID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cancelled */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -835,6 +908,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** All categories in display order, with product counts */
         get: {
             parameters: {
                 query?: never;
@@ -851,7 +925,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Category"][];
+                            data: components["schemas"]["AdminCategory"][];
                         };
                     };
                 };
@@ -887,6 +961,52 @@ export interface paths {
                 422: components["responses"]["Problem"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/categories/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the display order (categories:write). Must list every category id exactly once. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        categoryIds: components["schemas"]["ObjectID"][];
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AdminCategory"][];
+                        };
+                    };
+                };
+                409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
+            };
+        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -960,7 +1080,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/categories/{id}/image": {
+    "/v1/admin/categories/{id}/uploads": {
         parameters: {
             query?: never;
             header?: never;
@@ -969,9 +1089,40 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
-        /** Set/replace the category image (same rules as product images) */
-        put: {
+        /** Uploads in progress, failed (until dismissed) and finished in the last minute */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["UploadJob"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Upload one image for processing (categories:write). Send several requests in parallel for several files.
+         * @description JPEG, PNG, WebP or HEIC, up to 25 MB and 50 megapixels. The header is checked at once; the file is
+         *     then converted to WebP (longest edge 2400 px, EXIF orientation applied, metadata stripped) by the
+         *     image worker. Poll the list endpoint for progress. Replaces the current category image when done.
+         *     On 429 or 503 retry after `Retry-After`.
+         */
+        post: {
             parameters: {
                 query?: never;
                 header?: never;
@@ -989,19 +1140,84 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
-                200: {
+                /** @description Queued */
+                202: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Category"];
+                            data: components["schemas"]["UploadJob"];
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
+                413: components["responses"]["Problem"];
+                415: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+                503: components["responses"]["Problem"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/categories/{id}/uploads/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+                jobId: components["schemas"]["ObjectID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a queued upload (its original is deleted) or dismiss a failed one (categories:write) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    jobId: components["schemas"]["ObjectID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cancelled */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/categories/{id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         post?: never;
         delete: {
             parameters: {
@@ -1761,6 +1977,13 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        AdminCategory: components["schemas"]["Category"] & {
+            /**
+             * Format: int64
+             * @description Products in the category (any status)
+             */
+            productCount: number;
+        };
         CategoryInput: {
             /** @description Generated from name.en when omitted */
             slug?: string;
@@ -1973,6 +2196,28 @@ export interface components {
             requestId?: string;
             /** Format: date-time */
             at: string;
+        };
+        UploadJob: {
+            id: components["schemas"]["ObjectID"];
+            /** @description Display only */
+            fileName: string;
+            /** Format: int64 */
+            size: number;
+            /** @enum {string} */
+            status: "queued" | "processing" | "done" | "failed" | "cancelled";
+            /**
+             * @description While processing
+             * @enum {string}
+             */
+            stage?: "waiting" | "downloading" | "decoding" | "resizing" | "encoding" | "uploading";
+            percent: number;
+            attempts: number;
+            /** @description Why it failed, or "retrying" while waiting for another attempt */
+            error?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         PageViewInput: {
             /**

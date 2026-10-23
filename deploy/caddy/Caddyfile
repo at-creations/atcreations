@@ -40,7 +40,7 @@ www.{$STOREFRONT_DOMAIN} {
 {$API_DOMAIN} {
 	import common
 	request_body {
-		max_size 12MB
+		max_size 26MB # one original image per upload request (25 MB) plus form overhead
 	}
 	reverse_proxy api:8080
 }

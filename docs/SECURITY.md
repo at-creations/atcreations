@@ -31,7 +31,7 @@
 
 **Concurrency** — Product edits use optimistic concurrency (`version`): a save based on stale data (including stock changed by an order) is rejected with 409 instead of overwriting live stock.
 
-**Input** — 1 MiB JSON limit, single-object bodies, unknown fields rejected, struct validation, query parameter bounds, 12 MB request cap at Caddy and 10 MB per image in the API.
+**Input** — 1 MiB JSON limit, single-object bodies, unknown fields rejected, struct validation, query parameter bounds, 26 MB request cap at Caddy and 25 MB per image in the API.
 
 **Output** — Problem details never include internal errors (logged with request id instead). Security headers on every response: `nosniff`, `frame-ancestors 'none'`, `default-src 'none'` CSP on the API, COOP/CORP, `Referrer-Policy`, HSTS (preload) at Caddy. Admin is `noindex` and `no-store`.
 
@@ -41,13 +41,13 @@
 
 **Dev tunnel** — The optional Cloudflare Tunnel for the dev stack routes only the storefront, admin and API (catch-all 404); databases are never exposed. Tunnel credentials and the account certificate are git-ignored and excluded from Docker build contexts; the container gets only the tunnel credentials, read-only, with all capabilities dropped. The dev hostnames should sit behind Cloudflare Access. Vite only answers the tunnel hostnames it is told about (`VITE_ALLOWED_HOSTS`), which blocks DNS-rebinding against the dev servers.
 
-**Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; page-view beacon 120/min; analytics report 60/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
+**Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; page-view beacon 120/min; analytics report 60/min; order placement 5/10 min; order tracking 10/15 min; uploads 120/min (plus at most 4 uploads buffered per API instance); staff management 60/min.
 
 **Data** — Least-privilege Mongo user (`readWrite` on the app DB only); visitor fingerprints are keyed hashes; audit log of every admin mutation; nightly `mongodump` with retention (copy off-host).
 
 **Analytics** — No cookies, IP addresses or user agents are stored. Unique visitors are counted with a keyed, day-scoped hash that lives only in a Redis HyperLogLog for 48 h; MongoDB keeps aggregate counters (path, referrer host, device class, country) for 400 days. `DNT`/`Sec-GPC` and bots are not counted. The beacon is rate limited (120/min per IP), validates and normalises its input, and always answers 204 so it cannot be used to probe what was counted. The report needs `orders:read`.
 
-**Uploads** — At most two images are decoded at once; header-based limits reject anything over 32 MP or 128 MB decoded (catches 16-bit "decompression bombs"); `GOMEMLIMIT` keeps the Go heap under the container limit. Product image objects are removed by the nightly sweep, which keeps any image still shown on past orders.
+**Uploads** — The API checks only the file header and stores the original in the private `uploads/` area (never served publicly; `private, no-store`). Decoding happens in the separate image worker, which has no database access and accepts calls only with the shared token on the internal network: at most `WORKER_CONCURRENCY` images are decoded at once; header-based limits reject anything over 50 MP or 256 MB decoded (catches 16-bit "decompression bombs"); `GOMEMLIMIT` keeps the heap under the container limit. Output is re-encoded WebP (metadata stripped, EXIF orientation applied). Originals are deleted in every outcome (see ARCHITECTURE "Image uploads"). Product image objects are removed by the nightly sweep, which keeps any image still shown on past orders.
 
 **Containers** — Distroless non-root API image; read-only root filesystems, `cap_drop: ALL`, `no-new-privileges`, memory limits, log rotation; MongoDB on an internal-only network.
 

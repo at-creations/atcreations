@@ -43,8 +43,10 @@ type Product struct {
 	Featured        bool            `bson:"featured"`
 	CategoryIDs     []bson.ObjectID `bson:"categoryIds"`
 	Images          []Image         `bson:"images"`
-	Views           int64           `bson:"views"`
-	RecentViews     int64           `bson:"recentViews"`
+	// PendingImages counts uploads still being processed (they reserve room under the limit).
+	PendingImages int   `bson:"pendingImages,omitempty"`
+	Views         int64 `bson:"views"`
+	RecentViews   int64 `bson:"recentViews"`
 	// Version increments on every edit of the editable fields and on every
 	// stock change, enabling optimistic concurrency for admin edits.
 	Version int64 `bson:"version"`

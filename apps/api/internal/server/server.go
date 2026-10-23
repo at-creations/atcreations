@@ -24,6 +24,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/platform/redisx"
 	"github.com/atcreations/atcreations/apps/api/internal/staff"
 	"github.com/atcreations/atcreations/apps/api/internal/storeinfo"
+	"github.com/atcreations/atcreations/apps/api/internal/uploads"
 )
 
 type Deps struct {
@@ -38,6 +39,7 @@ type Deps struct {
 	Staff     *staff.Service
 	Audit     *audit.Log
 	Analytics *analytics.Handlers
+	Uploads   *uploads.Service
 }
 
 func byClientIP(r *http.Request) (string, error) { return httpx.ClientIPFrom(r.Context()), nil }
@@ -132,15 +134,21 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.ProductsWrite)).Post("/products", w(c.HandleCreateProduct))
 			r.With(can(auth.ProductsWrite)).Put("/products/{id}", w(c.HandleUpdateProduct))
 			r.With(can(auth.ProductsDelete)).Delete("/products/{id}", w(c.HandleDeleteProduct))
-			r.With(can(auth.ProductsWrite), limit("uploads", 60, time.Minute)).Post("/products/{id}/images", w(c.HandleAddProductImage))
+			// Image uploads: one file per request, processed asynchronously by the image worker.
+			r.With(can(auth.ProductsWrite), limit("uploads", 120, time.Minute)).Post("/products/{id}/uploads", d.Uploads.Upload(uploads.KindProduct))
+			r.Get("/products/{id}/uploads", d.Uploads.ListHandler(uploads.KindProduct))
+			r.With(can(auth.ProductsWrite)).Delete("/products/{id}/uploads/{jobId}", d.Uploads.CancelHandler(uploads.KindProduct))
 			r.With(can(auth.ProductsWrite)).Put("/products/{id}/images/order", w(c.HandleReorderProductImages))
 			r.With(can(auth.ProductsWrite)).Delete("/products/{id}/images/{imageId}", w(c.HandleRemoveProductImage))
 
-			r.Get("/categories", w(c.HandlePublicCategories))
+			r.Get("/categories", w(c.HandleAdminCategories))
+			r.With(can(auth.CategoriesWrite)).Put("/categories/order", w(c.HandleReorderCategories))
 			r.With(can(auth.CategoriesWrite)).Post("/categories", w(c.HandleCreateCategory))
 			r.With(can(auth.CategoriesWrite)).Put("/categories/{id}", w(c.HandleUpdateCategory))
 			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}", w(c.HandleDeleteCategory))
-			r.With(can(auth.CategoriesWrite), limit("uploads", 60, time.Minute)).Put("/categories/{id}/image", w(c.HandleSetCategoryImage))
+			r.With(can(auth.CategoriesWrite), limit("uploads", 120, time.Minute)).Post("/categories/{id}/uploads", d.Uploads.Upload(uploads.KindCategory))
+			r.Get("/categories/{id}/uploads", d.Uploads.ListHandler(uploads.KindCategory))
+			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}/uploads/{jobId}", d.Uploads.CancelHandler(uploads.KindCategory))
 			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}/image", w(c.HandleRemoveCategoryImage))
 
 			r.With(can(auth.StoreWrite)).Put("/store-info", w(d.StoreInfo.HandlePut))

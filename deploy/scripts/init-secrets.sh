@@ -16,7 +16,7 @@ gen secrets/mongo_root_password  openssl rand -hex 32
 gen secrets/mongo_app_password   openssl rand -hex 32
 gen secrets/redis_password       openssl rand -hex 32
 
-for app in api storefront admin; do
+for app in api imgworker storefront admin; do
   [ -s "env/$app.env" ] || { cp "env/$app.env.example" "env/$app.env"; echo "created env/$app.env (edit it!)"; }
 done
 
@@ -28,6 +28,10 @@ if grep -q "__REDIS_PASSWORD__" env/api.env; then
 fi
 if grep -q "__HASH_PEPPER__" env/api.env; then
   sed -i "s/__HASH_PEPPER__/$(openssl rand -hex 32 | oneline)/" env/api.env
+fi
+if grep -q "__IMAGE_WORKER_TOKEN__" env/api.env env/imgworker.env; then
+  token=$(openssl rand -hex 32 | oneline)
+  sed -i "s/__IMAGE_WORKER_TOKEN__/$token/" env/api.env env/imgworker.env
 fi
 chmod 600 secrets/* env/*.env
 echo "Done. Fill in the remaining placeholders in deploy/env/*.env and deploy/.env."

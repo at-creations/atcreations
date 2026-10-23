@@ -39,6 +39,8 @@ type Service struct {
 	cache      *redisx.Cache // nil-safe; invalidated after every catalogue write
 	// onView, when set, receives every counted (de-duplicated) product view.
 	onView func(ctx context.Context, id bson.ObjectID)
+	// onOwnerDeleted, when set, is told about deleted products and categories (pending uploads).
+	onOwnerDeleted func(ctx context.Context, kind string, id bson.ObjectID)
 }
 
 // OnProductView registers a callback for counted product views (the analytics rollup).
@@ -471,6 +473,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id bson.ObjectID) error {
 	}
 	// Image objects are left for the nightly sweep, which keeps any that
 	// past orders still reference.
+	s.ownerDeleted(ctx, "product", id)
 	s.audit.Record(ctx, "product.delete", "product", id.Hex())
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil
@@ -487,33 +490,6 @@ func (s *Service) deleteObjects(ctx context.Context, keys ...string) {
 }
 
 // ---------- Product images ----------
-
-func (s *Service) AddProductImage(ctx context.Context, actor string, id bson.ObjectID, img *media.Processed, alt *LocalizedText) (ProductDTO, error) {
-	if _, err := s.findProduct(ctx, bson.M{"_id": id}); err != nil {
-		return ProductDTO{}, err
-	}
-	key := media.NewKey(ProductImagePrefix+id.Hex(), img.Ext)
-	if err := s.storage.Put(ctx, key, img.Data, img.ContentType); err != nil {
-		return ProductDTO{}, err
-	}
-	rec := Image{ID: media.NewID(), Key: key, Width: img.Width, Height: img.Height, Alt: alt}
-	// The array-index condition makes the 10-image limit atomic.
-	filter := bson.M{"_id": id, fmt.Sprintf("images.%d", MaxProductImages-1): bson.M{"$exists": false}}
-	var p Product
-	err := s.products.FindOneAndUpdate(ctx, filter,
-		bson.M{"$push": bson.M{"images": rec}, "$set": bson.M{"updatedAt": time.Now().UTC(), "updatedBy": actor}},
-		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&p)
-	if err != nil {
-		s.deleteObjects(ctx, key)
-		if mongox.IsNotFound(err) {
-			return ProductDTO{}, httpx.Validation(httpx.FieldError{Field: "file", Message: fmt.Sprintf("a product can have at most %d images", MaxProductImages)})
-		}
-		return ProductDTO{}, err
-	}
-	s.audit.Record(ctx, "product.image.add", "product", id.Hex())
-	s.cache.Invalidate(ctx, redisx.NSCatalog)
-	return s.productDTO(ctx, &p)
-}
 
 func (s *Service) RemoveProductImage(ctx context.Context, actor string, id bson.ObjectID, imageID string) (ProductDTO, error) {
 	var before Product
@@ -725,35 +701,10 @@ func (s *Service) DeleteCategory(ctx context.Context, id bson.ObjectID) error {
 	if c.Image != nil {
 		s.deleteObjects(ctx, c.Image.Key)
 	}
+	s.ownerDeleted(ctx, "category", id)
 	s.audit.Record(ctx, "category.delete", "category", id.Hex())
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil
-}
-
-func (s *Service) SetCategoryImage(ctx context.Context, id bson.ObjectID, img *media.Processed) (CategoryDTO, error) {
-	key := media.NewKey(CategoryImagePrefix+id.Hex(), img.Ext)
-	if err := s.storage.Put(ctx, key, img.Data, img.ContentType); err != nil {
-		return CategoryDTO{}, err
-	}
-	rec := &Image{ID: media.NewID(), Key: key, Width: img.Width, Height: img.Height}
-	var before Category
-	err := s.categories.FindOneAndUpdate(ctx, bson.M{"_id": id},
-		bson.M{"$set": bson.M{"image": rec, "updatedAt": time.Now().UTC()}},
-		options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&before)
-	if err != nil {
-		s.deleteObjects(ctx, key)
-		if mongox.IsNotFound(err) {
-			return CategoryDTO{}, httpx.ErrNotFound
-		}
-		return CategoryDTO{}, err
-	}
-	if before.Image != nil {
-		s.deleteObjects(ctx, before.Image.Key)
-	}
-	before.Image = rec
-	s.audit.Record(ctx, "category.image.set", "category", id.Hex())
-	s.cache.Invalidate(ctx, redisx.NSCatalog)
-	return s.categoryDTO(&before), nil
 }
 
 func (s *Service) RemoveCategoryImage(ctx context.Context, id bson.ObjectID) (CategoryDTO, error) {

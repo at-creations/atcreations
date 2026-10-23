@@ -15,7 +15,7 @@ func base() Config {
 		S3Endpoint:             "https://acc.r2.cloudflarestorage.com", S3Bucket: "b",
 		CDNBaseURL: "https://cdn.example.com", StorefrontURL: "https://example.com",
 		HashPepper: strings.Repeat("a", 64), MailProvider: "sendgrid", SendGridKey: "SG.x",
-		RedisURL: "redis://:pw@redis:6379/0",
+		RedisURL: "redis://:pw@redis:6379/0", ImageWorkerToken: strings.Repeat("t", 64), UploadConcurrency: 3,
 	}
 }
 

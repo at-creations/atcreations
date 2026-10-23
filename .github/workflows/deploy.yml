@@ -29,7 +29,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - { name: api, context: apps/api, file: apps/api/Dockerfile }
+          - { name: api, context: apps/api, file: apps/api/Dockerfile, target: api }
+          - { name: imgworker, context: apps/api, file: apps/api/Dockerfile, target: imgworker }
           - { name: storefront, context: ., file: apps/storefront/Dockerfile }
           - { name: admin, context: ., file: apps/admin/Dockerfile }
     steps:
@@ -53,6 +54,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          target: ${{ matrix.target || '' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

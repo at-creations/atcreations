@@ -20,6 +20,7 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/catalog"
 	"github.com/atcreations/atcreations/apps/api/internal/mail"
+	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/orders"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
@@ -57,6 +58,25 @@ func (m *memStorage) Walk(_ context.Context, prefix string, fn func(string, time
 	return nil
 }
 func (m *memStorage) URL(key string) string { return "https://cdn.test/" + key }
+func (m *memStorage) PutObject(ctx context.Context, in media.PutInput) error {
+	return m.Put(ctx, in.Key, in.Data, in.ContentType)
+}
+func (m *memStorage) Get(_ context.Context, key string, _ int64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.objs[key]; !ok {
+		return nil, media.ErrObjectNotFound
+	}
+	return []byte{}, nil
+}
+func (m *memStorage) Head(_ context.Context, key string) (*media.ObjectInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.objs[key]; !ok {
+		return nil, media.ErrObjectNotFound
+	}
+	return &media.ObjectInfo{}, nil
+}
 
 type nopSender struct{}
 
@@ -300,5 +320,50 @@ func TestStaleProductEditCannotOverwriteStock(t *testing.T) {
 	in.Stock = 3
 	if _, err := cat.UpdateProduct(ctx, "u", p.ID, in); err != nil {
 		t.Fatalf("fresh save: %v", err)
+	}
+}
+
+func TestCategoryReorderAndCounts(t *testing.T) {
+	cat, _, _ := setup(t)
+	ctx := context.Background()
+	var ids []bson.ObjectID
+	for _, name := range []string{"Pottery", "Woodcraft", "Paper"} {
+		c, err := cat.CreateCategory(ctx, &catalog.CategoryInput{Name: catalog.NameInput{EN: name}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, c.ID)
+	}
+	if _, err := cat.CreateProduct(ctx, "u", &catalog.ProductInput{
+		Status: catalog.StatusDraft, Name: catalog.NameInput{EN: "Bowl"}, CategoryIDs: []bson.ObjectID{ids[0], ids[2]},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reverse the order.
+	if err := cat.ReorderCategories(ctx, []bson.ObjectID{ids[2], ids[1], ids[0]}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := cat.ListAdminCategories(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 3 || list[0].ID != ids[2] || list[2].ID != ids[0] {
+		t.Fatalf("order = %v", []bson.ObjectID{list[0].ID, list[1].ID, list[2].ID})
+	}
+	counts := map[bson.ObjectID]int64{}
+	for _, c := range list {
+		counts[c.ID] = c.ProductCount
+	}
+	if counts[ids[0]] != 1 || counts[ids[1]] != 0 || counts[ids[2]] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+
+	// Partial or duplicated lists are refused (a stale tab must not scramble the order).
+	if err := cat.ReorderCategories(ctx, []bson.ObjectID{ids[0], ids[1]}); status(err) != http.StatusConflict {
+		t.Fatalf("partial list: %v", err)
+	}
+	if err := cat.ReorderCategories(ctx, []bson.ObjectID{ids[0], ids[0], ids[1]}); status(err) != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicates: %v", err)
 	}
 }

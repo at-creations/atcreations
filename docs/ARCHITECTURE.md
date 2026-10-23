@@ -44,7 +44,9 @@
 | `storeinfo` | Store contact info and business hours |
 | `audit` | Append-only audit log of admin mutations (2-year TTL) |
 | `analytics` | Cookieless storefront page views, daily traffic rollups, the admin sales and traffic report |
-| `media` | Image validation/re-encoding, S3/R2 storage |
+| `media` | Image validation (JPEG/PNG/WebP/HEIC), EXIF orientation, WebP encoding, S3/R2 storage with adaptive retry |
+| `uploads` | Upload staging, durable `image_jobs` queue, dispatcher (leases, backoff), attach/cleanup, staging sweep |
+| `imageworker` | gRPC image worker (`cmd/imgworker`): streams progress, writes WebP, deletes originals |
 | `jobs` | Interval jobs guarded by MongoDB leases (multi-replica safe) |
 | `platform/redisx` | Redis connection, versioned response cache middleware, distributed lock |
 
@@ -73,6 +75,7 @@ Roles live in Clerk `publicMetadata.role`. The API maps them to permissions (`in
 | `store_info` | Singleton (`_id: "store"`). |
 | `audit_log` | Actor, action, resource, request id, IP; TTL 2 years. |
 | `job_leases` | Distributed locks for scheduled jobs. |
+| `image_jobs` | One doc per uploaded file: owner, staging and output keys, status (`queued`/`processing`/`done`/`failed`/`cancelled`), stage + percent, attempts, lease. Finished jobs expire after 7 days. Products also carry `pendingImages` (uploads in flight count toward the 10-image limit). |
 | `analytics_daily` | One doc per store-local day (`_id: "YYYY-MM-DD"`): `pageViews`, `visitors` (HyperLogLog estimate), `productViews`. TTL 400 days. |
 | `analytics_dims` | Per-day counters by dimension (`path`, `ref` host, `device`, `country`, `product`), unique on `{day, dim, key}`. TTL 400 days. |
 
@@ -87,6 +90,7 @@ The old service generated Gemini embeddings but never queried them; search was u
 | Job | Interval | What |
 |---|---|---|
 | `recent-views` | 1h | Recomputes 7-day view counts (drives "relevance" sort) |
+| `upload-sweep` | 1h | Deletes originals in `uploads/` older than 24h that no queued or processing job needs |
 | `media-sweep` | 24h | Deletes bucket objects under `products/` and `categories/` that no product, category or order references and are older than 24h (protects in-flight uploads and images shown on past orders) |
 
 ## Orders
@@ -98,6 +102,26 @@ pending → confirmed → processing → shipped → delivered → completed
    ↓          ↓            ↓                     ↓           ↓
 cancelled  cancelled   cancelled              refunded    refunded
 ```
+
+## Image uploads
+
+```
+admin (Uppy, 3 parallel, retries 429/5xx after Retry-After)
+  │ POST /v1/admin/{products|categories}/{id}/uploads   (one file per request, ≤25 MB)
+  ▼
+API: header check → reserve slot (atomic, ≤10/product) → original to uploads/… (private) → image_jobs: queued → 202
+  │ dispatcher (UPLOAD_CONCURRENCY per instance): claim with lease → gRPC ProcessImage (server-streaming)
+  ▼
+image worker: read original → decode (limits, EXIF orientation, HEIC) → resize ≤2400 px → WebP → write output → delete original
+  │ progress events (stage, %) are written to the job; the admin polls GET …/uploads every second
+  ▼
+API: attach image + release slot (one atomic update, idempotent per job id) → done
+```
+
+- **Retries:** transient errors (worker unavailable, storage throttling, timeouts) requeue the job with exponential backoff and jitter, up to 6 attempts; `RESOURCE_EXHAUSTED` (worker busy) does not count as an attempt. Leases are extended on every progress event and expire if an API instance dies, so another instance picks the job up.
+- **Originals are always removed:** by the worker after a successful write or when the file is not a usable image; by the API when a job is cancelled, gives up, or its product/category is deleted; and by the hourly `upload-sweep` for anything a crash left behind.
+- **Throttling:** S3 clients on both sides use the SDK's adaptive retry mode, treating 429/503/`SlowDown` as throttling (backs off and slows the client). The API buffers at most 4 uploads per instance (503 + `Retry-After` beyond that) and rate limits uploads to 120/min per client.
+- **Worker:** stateless, object storage only (no database), reachable only on the internal network with a shared token (`IMAGE_WORKER_TOKEN` / `WORKER_TOKEN`). Built from the API module with `-tags=nodynamic,wasm2go` so the codecs stay pure Go in the distroless image.
 
 ## Analytics
 

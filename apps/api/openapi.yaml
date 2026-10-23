@@ -120,6 +120,14 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    AdminCategory:
+      allOf:
+        - $ref: '#/components/schemas/Category'
+        - type: object
+          required: [productCount]
+          properties:
+            productCount: { type: integer, format: int64, description: Products in the category (any status) }
+
     CategoryInput:
       type: object
       additionalProperties: false
@@ -389,6 +397,24 @@ components:
         resourceId: { type: string }
         requestId: { type: string }
         at: { type: string, format: date-time }
+
+    UploadJob:
+      type: object
+      required: [id, fileName, size, status, percent, attempts, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        fileName: { type: string, description: Display only }
+        size: { type: integer, format: int64 }
+        status: { type: string, enum: [queued, processing, done, failed, cancelled] }
+        stage:
+          type: string
+          enum: [waiting, downloading, decoding, resizing, encoding, uploading]
+          description: While processing
+        percent: { type: integer, minimum: 0, maximum: 100 }
+        attempts: { type: integer }
+        error: { type: string, description: 'Why it failed, or "retrying" while waiting for another attempt' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     PageViewInput:
       type: object
@@ -686,12 +712,17 @@ paths:
       responses:
         '204': { description: Deleted }
         '404': { $ref: '#/components/responses/Problem' }
-  /v1/admin/products/{id}/images:
+  /v1/admin/products/{id}/uploads:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     post:
       tags: [admin]
       security: [{ clerk: [] }]
-      summary: Upload one image (JPEG/PNG/WebP, ≤10 MB, ≤40 MP; re-encoded, metadata stripped). Max 10 per product.
+      summary: Upload one image for processing (products:write). Send several requests in parallel for several files.
+      description: |
+        JPEG, PNG, WebP or HEIC, up to 25 MB and 50 megapixels. The header is checked at once; the file is
+        then converted to WebP (longest edge 2400 px, EXIF orientation applied, metadata stripped) by the
+        image worker. Poll the list endpoint for progress. Counts toward the 10-image limit while pending.
+        On 429 or 503 retry after `Retry-After`.
       requestBody:
         required: true
         content:
@@ -701,13 +732,32 @@ paths:
               required: [file]
               properties:
                 file: { type: string, format: binary }
-                altEn: { type: string, maxLength: 200 }
-                altVi: { type: string, maxLength: 200 }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '202': { description: Queued, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/UploadJob' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
         '413': { $ref: '#/components/responses/Problem' }
         '415': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Uploads in progress, failed (until dismissed) and finished in the last minute
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/UploadJob' } } } } } } }
+  /v1/admin/products/{id}/uploads/{jobId}:
+    parameters:
+      - { $ref: '#/components/parameters/ID' }
+      - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/ObjectID' } }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Cancel a queued upload (its original is deleted) or dismiss a failed one (products:write)
+      responses:
+        '204': { description: Cancelled }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /v1/admin/products/{id}/images/order:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     put:
@@ -742,8 +792,9 @@ paths:
     get:
       tags: [admin]
       security: [{ clerk: [] }]
+      summary: All categories in display order, with product counts
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Category' } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminCategory' } } } } } } }
     post:
       tags: [admin]
       security: [{ clerk: [] }]
@@ -751,6 +802,25 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/categories/order:
+    put:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Set the display order (categories:write). Must list every category id exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [categoryIds]
+              properties:
+                categoryIds: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/ObjectID' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminCategory' } } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
   /v1/admin/categories/{id}:
@@ -769,12 +839,17 @@ paths:
       summary: Delete category and remove it from products
       responses:
         '204': { description: Deleted }
-  /v1/admin/categories/{id}/image:
+  /v1/admin/categories/{id}/uploads:
     parameters: [{ $ref: '#/components/parameters/ID' }]
-    put:
+    post:
       tags: [admin]
       security: [{ clerk: [] }]
-      summary: Set/replace the category image (same rules as product images)
+      summary: Upload one image for processing (categories:write). Send several requests in parallel for several files.
+      description: |
+        JPEG, PNG, WebP or HEIC, up to 25 MB and 50 megapixels. The header is checked at once; the file is
+        then converted to WebP (longest edge 2400 px, EXIF orientation applied, metadata stripped) by the
+        image worker. Poll the list endpoint for progress. Replaces the current category image when done.
+        On 429 or 503 retry after `Retry-After`.
       requestBody:
         required: true
         content:
@@ -785,7 +860,33 @@ paths:
               properties:
                 file: { type: string, format: binary }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '202': { description: Queued, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/UploadJob' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Uploads in progress, failed (until dismissed) and finished in the last minute
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/UploadJob' } } } } } } }
+  /v1/admin/categories/{id}/uploads/{jobId}:
+    parameters:
+      - { $ref: '#/components/parameters/ID' }
+      - { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/ObjectID' } }
+    delete:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Cancel a queued upload (its original is deleted) or dismiss a failed one (categories:write)
+      responses:
+        '204': { description: Cancelled }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /v1/admin/categories/{id}/image:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
     delete:
       tags: [admin]
       security: [{ clerk: [] }]

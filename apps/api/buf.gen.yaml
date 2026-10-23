@@ -1,0 +1,10 @@
+# Regenerate with: go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate
+# (needs protoc-gen-go v1.36.12 and protoc-gen-go-grpc v1.6.2 on PATH; see README)
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: internal/gen
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: internal/gen
+    opt: paths=source_relative

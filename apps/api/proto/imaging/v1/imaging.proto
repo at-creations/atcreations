@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+// Internal contract between the API (job dispatcher) and the image worker.
+// The worker is stateless: the durable queue, retries and bookkeeping live in the API.
+package imaging.v1;
+
+option go_package = "github.com/atcreations/atcreations/apps/api/internal/gen/imaging/v1;imagingv1";
+
+service ImageWorkerService {
+  // ProcessImage turns an uploaded original into a downscaled WebP image.
+  //
+  // The worker reads `source_key` from object storage, validates and decodes it with memory
+  // limits, downsizes it to `max_edge`, encodes WebP, writes it to `output_key` and then deletes
+  // the original. Calls are idempotent per `output_key`: if the original is already gone but
+  // the output exists (a retry after a lost response), the existing output is reported.
+  //
+  // Errors (gRPC status codes):
+  //   INVALID_ARGUMENT     the file is not a supported image or exceeds the limits; the original
+  //                        has been deleted and the job must not be retried.
+  //   NOT_FOUND            neither the original nor the output exists; do not retry.
+  //   RESOURCE_EXHAUSTED   the worker is at capacity; retry later.
+  //   UNAVAILABLE, DEADLINE_EXCEEDED, INTERNAL
+  //                        transient (storage throttling, network); retry with backoff.
+  //
+  // The response streams progress events and ends with exactly one `result` (or an error).
+  rpc ProcessImage(ProcessImageRequest) returns (stream ProcessImageResponse);
+}
+
+message ProcessImageRequest {
+  // Correlates worker logs with the API's job.
+  string job_id = 1;
+  // Object key of the uploaded original (private staging area).
+  string source_key = 2;
+  // Object key the WebP result is written to. Deterministic per job, so retries overwrite.
+  string output_key = 3;
+  // Longest edge of the result in pixels; larger images are downscaled, smaller ones kept.
+  uint32 max_edge = 4;
+  // WebP quality, 1-100.
+  uint32 quality = 5;
+}
+
+message ProcessImageResponse {
+  oneof event {
+    Progress progress = 1;
+    Result result = 2;
+  }
+}
+
+message Progress {
+  Stage stage = 1;
+  // Overall completion 0-100.
+  uint32 percent = 2;
+}
+
+enum Stage {
+  STAGE_UNSPECIFIED = 0;
+  STAGE_WAITING = 1; // waiting for a free processing slot
+  STAGE_DOWNLOADING = 2;
+  STAGE_DECODING = 3;
+  STAGE_RESIZING = 4;
+  STAGE_ENCODING = 5;
+  STAGE_UPLOADING = 6;
+}
+
+message Result {
+  string output_key = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  uint64 size_bytes = 4;
+  string content_type = 5;
+}

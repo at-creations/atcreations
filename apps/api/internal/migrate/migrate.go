@@ -17,7 +17,6 @@
 package migrate
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -399,7 +398,7 @@ func (m *Runner) image(ctx context.Context, oldKey, prefix string) (*catalog.Ima
 	if err != nil {
 		return nil, false, err
 	}
-	processed, err := media.Process(ctx, bytes.NewReader(raw))
+	processed, err := media.Process(ctx, raw, media.Options{})
 	if err != nil {
 		return nil, false, fmt.Errorf("process: %w", err)
 	}

@@ -36,7 +36,7 @@ The new system starts on a fresh MongoDB and a fresh R2 bucket. Nothing reads th
 | `stock` | `stock` | Clamp ≥ 0 |
 | `featured` | `featured` | |
 | `categoryIds` | `categoryIds` | Remap if category ids change |
-| `thumbnail` + `images[]` (R2 keys) | `images[]` ordered, cover first | Download each object, run through `media.Process`, upload under `products/{id}/{random}.jpg` |
+| `thumbnail` + `images[]` (R2 keys) | `images[]` ordered, cover first | Download each object, run through `media.Process` (WebP), upload under `products/{id}/{random}.webp` |
 | `views` | `views` | |
 | — | `slug` | `textx.Slugify(name.en)` with numeric suffix on collision |
 | — | `status` | `published` |

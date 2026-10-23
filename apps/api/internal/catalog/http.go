@@ -3,12 +3,10 @@ package catalog
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
-	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/httpx"
 )
 
@@ -190,31 +188,6 @@ func (s *Service) HandleDeleteProduct(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
-func (s *Service) HandleAddProductImage(w http.ResponseWriter, r *http.Request) error {
-	id, err := httpx.ObjectIDParam(r, "id")
-	if err != nil {
-		return err
-	}
-	img, err := readImageUpload(w, r)
-	if err != nil {
-		return err
-	}
-	var alt *LocalizedText
-	altEN, altVI := strings.TrimSpace(r.FormValue("altEn")), strings.TrimSpace(r.FormValue("altVi"))
-	if len(altEN) > 200 || len(altVI) > 200 {
-		return httpx.Validation(httpx.FieldError{Field: "alt", Message: "must be at most 200 characters"})
-	}
-	if altEN != "" || altVI != "" {
-		alt = &LocalizedText{EN: altEN, VI: altVI}
-	}
-	dto, err := s.AddProductImage(r.Context(), actorID(r), id, img, alt)
-	if err != nil {
-		return err
-	}
-	httpx.JSON(w, http.StatusCreated, dto)
-	return nil
-}
-
 func (s *Service) HandleRemoveProductImage(w http.ResponseWriter, r *http.Request) error {
 	id, err := httpx.ObjectIDParam(r, "id")
 	if err != nil {
@@ -291,23 +264,6 @@ func (s *Service) HandleDeleteCategory(w http.ResponseWriter, r *http.Request) e
 	return nil
 }
 
-func (s *Service) HandleSetCategoryImage(w http.ResponseWriter, r *http.Request) error {
-	id, err := httpx.ObjectIDParam(r, "id")
-	if err != nil {
-		return err
-	}
-	img, err := readImageUpload(w, r)
-	if err != nil {
-		return err
-	}
-	dto, err := s.SetCategoryImage(r.Context(), id, img)
-	if err != nil {
-		return err
-	}
-	httpx.JSON(w, http.StatusOK, dto)
-	return nil
-}
-
 func (s *Service) HandleRemoveCategoryImage(w http.ResponseWriter, r *http.Request) error {
 	id, err := httpx.ObjectIDParam(r, "id")
 	if err != nil {
@@ -328,34 +284,4 @@ func actorID(r *http.Request) string {
 		return p.UserID
 	}
 	return ""
-}
-
-// readImageUpload parses a multipart body with a single "file" part and runs it
-// through image validation and re-encoding.
-func readImageUpload(w http.ResponseWriter, r *http.Request) (*media.Processed, error) {
-	r.Body = http.MaxBytesReader(w, r.Body, media.MaxUploadBytes+64<<10)
-	// Small memory budget: anything larger spills to a temp file that the
-	// standard library removes when the request ends.
-	// The body is bounded by MaxBytesReader above.
-	if err := r.ParseMultipartForm(2 << 20); err != nil { //nolint:gosec // G120: bounded above
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
-			return nil, media.ErrTooLarge
-		}
-		return nil, httpx.BadRequest("expected a multipart/form-data body")
-	}
-	files := r.MultipartForm.File["file"]
-	if len(files) != 1 {
-		return nil, httpx.Validation(httpx.FieldError{Field: "file", Message: "exactly one file is required"})
-	}
-	f, err := files[0].Open()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	img, err := media.Process(r.Context(), f)
-	if err != nil {
-		return nil, err
-	}
-	return img, nil
 }

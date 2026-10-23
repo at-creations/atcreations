@@ -53,3 +53,9 @@ docker/dev/cloudflared/*
 
 # Dev marketing images (docker/dev/fetch-site-assets.sh)
 docker/dev/site-assets/
+
+# Go build output (local `go build`)
+*.exe
+/apps/api/api
+/apps/api/imgworker
+/apps/api/migrate

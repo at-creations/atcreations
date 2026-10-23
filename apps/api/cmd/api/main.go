@@ -17,6 +17,9 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/invitation"
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/atcreations/atcreations/apps/api/internal/analytics"
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
@@ -32,6 +35,9 @@ import (
 	"github.com/atcreations/atcreations/apps/api/internal/server"
 	"github.com/atcreations/atcreations/apps/api/internal/staff"
 	"github.com/atcreations/atcreations/apps/api/internal/storeinfo"
+	"github.com/atcreations/atcreations/apps/api/internal/uploads"
+
+	imagingv1 "github.com/atcreations/atcreations/apps/api/internal/gen/imaging/v1"
 )
 
 // version is set at build time via -ldflags.
@@ -133,8 +139,24 @@ func run() error {
 	})
 	catalogSvc.OnProductView(analyticsSvc.RecordProductView)
 
+	// The image worker runs on the internal network; every call carries the shared token.
+	workerConn, err := grpc.NewClient(cfg.ImageWorkerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(tokenCreds(cfg.ImageWorkerToken)),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second}),
+	)
+	if err != nil {
+		return fmt.Errorf("image worker client: %w", err)
+	}
+	defer func() { _ = workerConn.Close() }()
+	host, _ := os.Hostname()
+	uploadSvc := uploads.New(db, storage, catalogSvc, imagingv1.NewImageWorkerServiceClient(workerConn), uploads.Options{
+		Concurrency: cfg.UploadConcurrency, Instance: fmt.Sprintf("%s-%d", host, os.Getpid()),
+	})
+	catalogSvc.OnOwnerDeleted(uploadSvc.CancelOwner)
+
 	idxCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	for _, ensure := range []func(context.Context) error{auditLog.EnsureIndexes, catalogSvc.EnsureIndexes, orderSvc.EnsureIndexes, analyticsSvc.EnsureIndexes} {
+	for _, ensure := range []func(context.Context) error{auditLog.EnsureIndexes, catalogSvc.EnsureIndexes, orderSvc.EnsureIndexes, analyticsSvc.EnsureIndexes, uploadSvc.EnsureIndexes} {
 		if err := ensure(idxCtx); err != nil {
 			cancel()
 			return err
@@ -142,10 +164,18 @@ func run() error {
 	}
 	cancel()
 
+	uploadSvc.Run(ctx)
+
 	if cfg.JobsEnabled {
-		host, _ := os.Hostname()
 		jobs.NewScheduler(mongox.NewLeases(db, fmt.Sprintf("%s-%d", host, os.Getpid())),
 			jobs.Job{Name: "recent-views", Every: time.Hour, Timeout: 5 * time.Minute, Run: catalogSvc.RefreshRecentViews},
+			jobs.Job{Name: "upload-sweep", Every: time.Hour, Timeout: 10 * time.Minute, Run: func(ctx context.Context) error {
+				n, err := uploadSvc.Sweep(ctx)
+				if n > 0 {
+					slog.InfoContext(ctx, "removed stale upload originals", "count", n)
+				}
+				return err
+			}},
 			jobs.Job{Name: "media-sweep", Every: 24 * time.Hour, Timeout: 30 * time.Minute, Run: func(ctx context.Context) error {
 				n, err := catalogSvc.SweepOrphanedMedia(ctx, 24*time.Hour)
 				if n > 0 {
@@ -161,6 +191,7 @@ func run() error {
 		Catalog: catalogSvc, Orders: orders.NewHandlers(orderSvc, cfg.PublicCheckoutEnabled),
 		StoreInfo: storeSvc, Staff: staffSvc, Audit: auditLog,
 		Analytics: analytics.NewHandlers(analyticsSvc, cfg.TrustedProxyPrefixes),
+		Uploads:   uploadSvc,
 	})
 
 	srv := &http.Server{
@@ -204,3 +235,13 @@ func setupLogging(cfg *config.Config) {
 	}
 	slog.SetDefault(slog.New(h))
 }
+
+// tokenCreds sends the image worker's shared token on every call. The worker is only reachable
+// on the internal network, so transport security is not required.
+type tokenCreds string
+
+func (t tokenCreds) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + string(t)}, nil
+}
+
+func (tokenCreds) RequireTransportSecurity() bool { return false }

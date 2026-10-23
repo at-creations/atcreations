@@ -34,7 +34,7 @@ services:
   api:
     <<: *hardening
     image: ${REGISTRY:-ghcr.io/atcreations}/atcreations-api:${TAG:-latest}
-    build: { context: ../apps/api }
+    build: { context: ../apps/api, target: api }
     env_file: [./env/api.env]
     environment:
       APP_ENV: production
@@ -43,6 +43,7 @@ services:
       # may set X-Forwarded-For. Never trust the whole subnet: it includes the
       # Docker gateway, which fronts IPv6 visitors when the userland proxy is used.
       TRUSTED_PROXIES: 172.30.0.10/32,172.30.0.11/32
+      IMAGE_WORKER_ADDR: imgworker:9090
       GOMEMLIMIT: 400MiB
     tmpfs: ["/tmp:size=64m"] # multipart uploads spill here
     mem_limit: 512m
@@ -50,6 +51,22 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
+
+  # Image worker: decodes and re-encodes uploads (WebP). Object storage only: no database,
+  # no published ports, reachable only by the API with the shared token.
+  imgworker:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/atcreations}/atcreations-imgworker:${TAG:-latest}
+    build: { context: ../apps/api, target: imgworker }
+    env_file: [./env/imgworker.env]
+    environment:
+      APP_ENV: production
+      WORKER_ADDR: ":9090"
+      WORKER_CONCURRENCY: "2"
+      GOMEMLIMIT: 768MiB
+    tmpfs: ["/tmp:size=16m"]
+    mem_limit: 1g
+    networks: [edge]
 
   storefront:
     <<: *hardening
