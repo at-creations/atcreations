@@ -100,6 +100,9 @@ func run() error {
 		slog.Warn("REDIS_URL not set: using in-memory rate limits, no response cache")
 	}
 	cache := redisx.NewCache(rdb)
+	// Cached responses embed config-derived values (e.g. image URLs from
+	// CDN_BASE_URL), so start every process with a fresh cache generation.
+	cache.Invalidate(ctx, redisx.NSCatalog, redisx.NSStore)
 
 	clerk.SetKey(cfg.ClerkSecretKey)
 	clerkCfg := &clerk.ClientConfig{}
