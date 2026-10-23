@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { Tooltip } from 'bits-ui';
 	import { ClerkProvider } from 'svelte-clerk';
 	import { clerkAppearance, clerkLocalization } from '$lib/clerk-appearance';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
@@ -21,7 +22,9 @@
 	appearance={clerkAppearance}
 	localization={clerkLocalization()}
 >
-	{@render children()}
+	<Tooltip.Provider delayDuration={300}>
+		{@render children()}
+	</Tooltip.Provider>
 </ClerkProvider>
 
 <Toaster />

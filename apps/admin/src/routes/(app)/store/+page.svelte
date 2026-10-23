@@ -7,6 +7,7 @@
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
+	import Checkbox from '$lib/components/ui/Checkbox.svelte';
 	import { formatDateTime } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
@@ -187,14 +188,7 @@
 						{@const error = hourErrors[i]}
 						<li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
 							<span class="w-28 font-medium" id="{uid}-{day.day}">{dayLabels[day.day]()}</span>
-							<label class="inline-flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									class="size-4 rounded border-zinc-300"
-									bind:checked={day.closed}
-								/>
-								{m.store_closed()}
-							</label>
+							<Checkbox label={m.store_closed()} bind:checked={day.closed} />
 							{#if !day.closed}
 								<label class="flex items-center gap-2 text-sm">
 									<span class="text-zinc-600">{m.store_open_time()}</span>

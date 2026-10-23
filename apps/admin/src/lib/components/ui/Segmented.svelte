@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts" generics="T extends string">
+	import { ToggleGroup } from 'bits-ui';
 	import Icon from '../Icon.svelte';
 
 	let {
@@ -34,51 +35,37 @@
 	} = $props();
 </script>
 
-<div
-	role="radiogroup"
+<ToggleGroup.Root
+	type="single"
+	{value}
+	{disabled}
 	aria-label={label}
+	onValueChange={(next) => {
+		// A segmented control always has a selection: ignore clicks on the active item.
+		if (!next) return;
+		value = next as T;
+		onchange?.(next as T);
+	}}
 	class={[
-		'inline-flex rounded-lg bg-zinc-100 p-0.5',
-		full && 'flex w-full',
-		disabled && 'pointer-events-none opacity-60'
+		'inline-flex rounded-lg bg-zinc-100 p-0.5 data-[disabled]:pointer-events-none data-[disabled]:opacity-60',
+		full && 'flex w-full'
 	]}
 >
 	{#each options as option (option.value)}
-		{@const active = option.value === value}
-		<button
-			type="button"
-			role="radio"
-			aria-checked={active}
+		<ToggleGroup.Item
+			value={option.value}
 			aria-label={iconOnly ? option.label : undefined}
 			title={iconOnly ? option.label : undefined}
-			tabindex={active ? 0 : -1}
-			{disabled}
 			class={[
-				'flex h-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-all',
+				'flex h-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-zinc-500 transition-all hover:text-zinc-800 focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none data-[state=on]:bg-white data-[state=on]:text-zinc-900 data-[state=on]:shadow-sm',
 				iconOnly ? 'w-8' : 'px-3',
-				full && 'flex-1',
-				active ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800'
+				full && 'flex-1'
 			]}
-			onclick={() => {
-				value = option.value;
-				onchange?.(option.value);
-			}}
-			onkeydown={(e) => {
-				if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-				e.preventDefault();
-				const i = options.findIndex((o) => o.value === value);
-				const step = e.key === 'ArrowRight' ? 1 : -1;
-				const next = options[(i + step + options.length) % options.length];
-				if (!next) return;
-				value = next.value;
-				onchange?.(next.value);
-				(e.currentTarget.parentElement?.children[options.indexOf(next)] as HTMLElement)?.focus();
-			}}
 		>
 			{#if option.dot}<span class={['size-2 rounded-full', option.dot]} aria-hidden="true"
 				></span>{/if}
 			{#if option.icon}<Icon name={option.icon} size={16} />{/if}
 			{#if !iconOnly}{option.label}{/if}
-		</button>
+		</ToggleGroup.Item>
 	{/each}
-</div>
+</ToggleGroup.Root>

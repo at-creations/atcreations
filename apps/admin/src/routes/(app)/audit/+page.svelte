@@ -6,6 +6,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { formatDateTime } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages.js';
 	import { auditListQuery } from '$lib/queries';
@@ -13,7 +14,6 @@
 	import { readInt, readString, withParams } from '$lib/utils/query';
 
 	const session = getAdminSession();
-	const uid = $props.id();
 	const PAGE_SIZES = [25, 50, 100] as const;
 	const RESOURCES: { value: string; label: () => string }[] = [
 		{ value: 'product', label: m.audit_res_product },
@@ -53,29 +53,28 @@
 	}
 
 	const knownResource = $derived(RESOURCES.some((r) => r.value === filters.resource));
+
+	const resourceItems = $derived([
+		{ value: '', label: m.audit_all_resources() },
+		...RESOURCES.map((r) => ({ value: r.value, label: r.label() })),
+		...(filters.resource && !knownResource
+			? [{ value: filters.resource, label: filters.resource }]
+			: [])
+	]);
 </script>
 
 <RequirePermission permission="audit:read">
 	<PageHeader title={m.audit_title()} />
 
 	<div class="mb-4 flex flex-wrap items-center gap-3 card p-3">
-		<label for="{uid}-resource" class="text-sm font-medium text-zinc-700"
-			>{m.audit_filter_resource()}</label
-		>
-		<select
-			id="{uid}-resource"
-			class="input w-auto"
+		<span class="text-sm font-medium text-zinc-700">{m.audit_filter_resource()}</span>
+		<Select
+			label={m.audit_filter_resource()}
+			class="w-auto min-w-44"
 			value={filters.resource}
-			onchange={(e) => navigate({ resource: e.currentTarget.value })}
-		>
-			<option value="">{m.audit_all_resources()}</option>
-			{#each RESOURCES as r (r.value)}
-				<option value={r.value}>{r.label()}</option>
-			{/each}
-			{#if filters.resource && !knownResource}
-				<option value={filters.resource}>{filters.resource}</option>
-			{/if}
-		</select>
+			items={resourceItems}
+			onchange={(resource) => navigate({ resource })}
+		/>
 	</div>
 
 	<section class="overflow-hidden card" aria-busy={auditQuery.isFetching}>

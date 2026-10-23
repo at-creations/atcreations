@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Label, Switch } from 'bits-ui';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -15,23 +16,34 @@
 		/** Optional leading icon next to the label. */
 		icon?: Snippet;
 	} = $props();
+
+	const uid = $props.id();
 </script>
 
-<label
-	class={[
-		'flex items-center justify-between gap-4',
-		disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-	]}
->
+<div class={['flex items-center justify-between gap-4', disabled && 'opacity-60']}>
 	<span class="min-w-0">
-		<span class="flex items-center gap-1.5 text-sm font-medium text-zinc-900">
+		<Label.Root
+			for="{uid}-switch"
+			class={[
+				'flex items-center gap-1.5 text-sm font-medium text-zinc-900',
+				disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+			]}
+		>
 			{@render icon?.()}{label}
-		</span>
-		{#if description}<span class="mt-0.5 block text-xs text-zinc-500">{description}</span>{/if}
+		</Label.Root>
+		{#if description}
+			<span id="{uid}-desc" class="mt-0.5 block text-xs text-zinc-500">{description}</span>
+		{/if}
 	</span>
-	<input type="checkbox" role="switch" class="peer sr-only" {disabled} bind:checked />
-	<span
-		class="relative h-5 w-9 shrink-0 rounded-full bg-zinc-200 transition-colors peer-checked:bg-brand-400 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-300 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
-		aria-hidden="true"
-	></span>
-</label>
+	<Switch.Root
+		id="{uid}-switch"
+		bind:checked
+		{disabled}
+		aria-describedby={description ? `${uid}-desc` : undefined}
+		class="peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full bg-zinc-200 px-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none disabled:cursor-not-allowed data-[state=checked]:bg-brand-400"
+	>
+		<Switch.Thumb
+			class="pointer-events-none block size-4 rounded-full bg-white shadow-sm transition-transform data-[state=checked]:translate-x-4"
+		/>
+	</Switch.Root>
+</div>

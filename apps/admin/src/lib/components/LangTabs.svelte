@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Tabs } from 'bits-ui';
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -15,55 +16,28 @@
 		children: Snippet<[Lang]>;
 	} = $props();
 
-	const uid = $props.id();
 	const langs: Lang[] = ['en', 'vi'];
 	const labels = $derived({ en: m.tab_english(), vi: m.tab_vietnamese() });
-	const tabs: Record<Lang, HTMLButtonElement | undefined> = $state({
-		en: undefined,
-		vi: undefined
-	});
-
-	function onkeydown(event: KeyboardEvent) {
-		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-		event.preventDefault();
-		active = active === 'en' ? 'vi' : 'en';
-		tabs[active]?.focus();
-	}
 </script>
 
-<div>
-	<div role="tablist" tabindex="-1" class="mb-4 flex gap-1 border-b border-zinc-200" {onkeydown}>
+<Tabs.Root bind:value={active as string}>
+	<Tabs.List class="mb-4 flex gap-1 border-b border-zinc-200">
 		{#each langs as lang (lang)}
-			<button
-				bind:this={tabs[lang]}
-				type="button"
-				role="tab"
-				id="{uid}-tab-{lang}"
-				aria-controls="{uid}-panel-{lang}"
-				aria-selected={active === lang}
-				tabindex={active === lang ? 0 : -1}
+			<Tabs.Trigger
+				value={lang}
 				class={[
-					'-mb-px border-b-2 px-4 py-2 text-sm font-medium',
-					active === lang
-						? 'border-brand-400 text-brand-800'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800',
-					errors[lang] && 'text-red-600'
+					'-mb-px border-b-2 border-transparent px-4 py-2 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-800 focus-visible:bg-zinc-50 focus-visible:outline-none data-[state=active]:border-brand-400 data-[state=active]:text-brand-800',
+					errors[lang] && 'text-red-600 data-[state=active]:text-red-600'
 				]}
-				onclick={() => (active = lang)}
 			>
 				{errors[lang] ? m.tab_has_errors({ tab: labels[lang] }) : labels[lang]}
-			</button>
+			</Tabs.Trigger>
 		{/each}
-	</div>
+	</Tabs.List>
 	{#each langs as lang (lang)}
-		<div
-			role="tabpanel"
-			id="{uid}-panel-{lang}"
-			aria-labelledby="{uid}-tab-{lang}"
-			hidden={active !== lang}
-			class="space-y-4"
-		>
+		<!-- Field values live in the parent form, so switching tabs never loses input. -->
+		<Tabs.Content value={lang} class="space-y-4">
 			{@render children(lang)}
-		</div>
+		</Tabs.Content>
 	{/each}
-</div>
+</Tabs.Root>

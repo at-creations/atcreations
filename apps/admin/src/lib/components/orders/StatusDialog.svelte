@@ -4,6 +4,7 @@
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Checkbox from '$lib/components/ui/Checkbox.svelte';
 	import { orderStatusLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
@@ -91,10 +92,7 @@
 				<textarea {...control} class="input min-h-20" maxlength="1000" bind:value={note}></textarea>
 			{/snippet}
 		</Field>
-		<label class="inline-flex items-center gap-2 text-sm">
-			<input type="checkbox" class="size-4 rounded border-zinc-300" bind:checked={notify} />
-			{m.od_notify()}
-		</label>
+		<Checkbox label={m.od_notify()} bind:checked={notify} />
 	</form>
 	{#snippet footer()}
 		<button type="button" class="btn-secondary" disabled={saving} onclick={() => (open = false)}>

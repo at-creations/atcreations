@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Product, ProductStatus } from '@atcreations/api-types';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { Popover } from 'bits-ui';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -19,6 +20,8 @@
 	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import Thumb from '$lib/components/ui/Thumb.svelte';
+	import Tip from '$lib/components/ui/Tip.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { formatDate, localized, priceErrorMessage, productStatusLabel } from '$lib/i18n';
 	import { storefrontProductUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
@@ -183,6 +186,12 @@
 		});
 	}
 
+	const categoryItems = $derived([
+		{ value: '', label: m.products_all_categories() },
+		{ value: UNCATEGORIZED, label: m.products_uncategorized() },
+		...categories.map((c) => ({ value: c.id, label: localized(c.name) }))
+	]);
+
 	const categoryName = $derived(
 		filters.category === UNCATEGORIZED
 			? m.products_uncategorized()
@@ -289,109 +298,97 @@
 			onsearch={(q) => navigate({ q })}
 		/>
 		<div class="flex items-center gap-2 sm:ml-auto">
-			<button
-				type="button"
-				class={['btn-secondary', panelOpen && 'border-brand-300 bg-brand-50 text-brand-800']}
-				aria-expanded={panelOpen}
-				aria-controls="{uid}-panel"
-				onclick={() => (panelOpen = !panelOpen)}
-			>
-				<Icon name="filter" size={16} />{m.common_filters()}
-				{#if chips.length > 0}
-					<span class="rounded-full bg-brand-200 px-1.5 text-[11px] font-semibold text-brand-900"
-						>{chips.length}</span
+			<Popover.Root bind:open={panelOpen}>
+				<Popover.Trigger
+					class={['btn-secondary', panelOpen && 'border-brand-300 bg-brand-50 text-brand-800']}
+				>
+					<Icon name="filter" size={16} />{m.common_filters()}
+					{#if chips.length > 0}
+						<span class="rounded-full bg-brand-200 px-1.5 text-[11px] font-semibold text-brand-900"
+							>{chips.length}</span
+						>
+					{/if}
+				</Popover.Trigger>
+				<Popover.Portal>
+					<Popover.Content
+						align="end"
+						sideOffset={6}
+						class="z-[60] grid w-[min(92vw,22rem)] animate-pop-in gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-popover"
 					>
-				{/if}
-			</button>
-			<label for="{uid}-sort" class="sr-only">{m.common_sort_by()}</label>
-			<select
-				id="{uid}-sort"
-				class="input w-auto"
+						<div>
+							<span class="label">{m.products_filter_category()}</span>
+							<Select
+								label={m.products_filter_category()}
+								class="min-w-48"
+								value={filters.category}
+								items={categoryItems}
+								onchange={(category) => navigate({ category })}
+							/>
+						</div>
+						<div>
+							<span class="label">{m.products_filter_featured()}</span>
+							<Segmented
+								label={m.products_filter_featured()}
+								value={filters.featured ?? ''}
+								onchange={(featured) => navigate({ featured })}
+								options={[
+									{ value: '', label: m.common_all() },
+									{ value: 'true', label: m.products_featured_only() },
+									{ value: 'false', label: m.products_not_featured() }
+								]}
+							/>
+						</div>
+						<form onsubmit={applyPrice} novalidate>
+							<fieldset>
+								<legend class="label">{m.products_price_range()}</legend>
+								<div class="flex items-start gap-2">
+									<div>
+										<label for="{uid}-min" class="sr-only">{m.products_min()}</label>
+										<input
+											id="{uid}-min"
+											class="input w-24"
+											inputmode="decimal"
+											placeholder={m.products_min()}
+											bind:value={minInput}
+											aria-invalid={minError ? 'true' : undefined}
+											aria-describedby={minError ? `${uid}-min-err` : undefined}
+										/>
+										{#if minError}<p id="{uid}-min-err" class="mt-1 text-xs text-red-600">
+												{minError}
+											</p>{/if}
+									</div>
+									<span class="mt-2 text-zinc-300" aria-hidden="true">–</span>
+									<div>
+										<label for="{uid}-max" class="sr-only">{m.products_max()}</label>
+										<input
+											id="{uid}-max"
+											class="input w-24"
+											inputmode="decimal"
+											placeholder={m.products_max()}
+											bind:value={maxInput}
+											aria-invalid={maxError ? 'true' : undefined}
+											aria-describedby={maxError ? `${uid}-max-err` : undefined}
+										/>
+										{#if maxError}<p id="{uid}-max-err" class="mt-1 text-xs text-red-600">
+												{maxError}
+											</p>{/if}
+									</div>
+									<button type="submit" class="btn-secondary">{m.common_apply()}</button>
+								</div>
+							</fieldset>
+						</form>
+					</Popover.Content>
+				</Popover.Portal>
+			</Popover.Root>
+			<Select
+				label={m.common_sort_by()}
+				class="w-auto min-w-40"
 				value={filters.sort}
-				onchange={(e) =>
-					navigate({ sort: e.currentTarget.value === 'newest' ? null : e.currentTarget.value })}
-			>
-				{#each SORTS as sort (sort)}
-					<option value={sort}>{sortLabels[sort]()}</option>
-				{/each}
-			</select>
+				items={SORTS.map((s) => ({ value: s, label: sortLabels[s]() }))}
+				onchange={(v) => navigate({ sort: v === 'newest' ? null : v })}
+			/>
 		</div>
 	</div>
-
-	{#if panelOpen}
-		<div
-			id="{uid}-panel"
-			class="grid animate-slide-down gap-4 card p-4 sm:grid-cols-2 lg:grid-cols-[repeat(3,auto)] lg:justify-start lg:gap-8"
-		>
-			<div>
-				<label for="{uid}-category" class="label">{m.products_filter_category()}</label>
-				<select
-					id="{uid}-category"
-					class="input min-w-48"
-					value={filters.category}
-					onchange={(e) => navigate({ category: e.currentTarget.value })}
-				>
-					<option value="">{m.products_all_categories()}</option>
-					<option value={UNCATEGORIZED}>{m.products_uncategorized()}</option>
-					{#each categories as category (category.id)}
-						<option value={category.id}>{localized(category.name)}</option>
-					{/each}
-				</select>
-			</div>
-			<div>
-				<span class="label">{m.products_filter_featured()}</span>
-				<Segmented
-					label={m.products_filter_featured()}
-					value={filters.featured ?? ''}
-					onchange={(featured) => navigate({ featured })}
-					options={[
-						{ value: '', label: m.common_all() },
-						{ value: 'true', label: m.products_featured_only() },
-						{ value: 'false', label: m.products_not_featured() }
-					]}
-				/>
-			</div>
-			<form onsubmit={applyPrice} novalidate>
-				<fieldset>
-					<legend class="label">{m.products_price_range()}</legend>
-					<div class="flex items-start gap-2">
-						<div>
-							<label for="{uid}-min" class="sr-only">{m.products_min()}</label>
-							<input
-								id="{uid}-min"
-								class="input w-24"
-								inputmode="decimal"
-								placeholder={m.products_min()}
-								bind:value={minInput}
-								aria-invalid={minError ? 'true' : undefined}
-								aria-describedby={minError ? `${uid}-min-err` : undefined}
-							/>
-							{#if minError}<p id="{uid}-min-err" class="mt-1 text-xs text-red-600">
-									{minError}
-								</p>{/if}
-						</div>
-						<span class="mt-2 text-zinc-300" aria-hidden="true">–</span>
-						<div>
-							<label for="{uid}-max" class="sr-only">{m.products_max()}</label>
-							<input
-								id="{uid}-max"
-								class="input w-24"
-								inputmode="decimal"
-								placeholder={m.products_max()}
-								bind:value={maxInput}
-								aria-invalid={maxError ? 'true' : undefined}
-								aria-describedby={maxError ? `${uid}-max-err` : undefined}
-							/>
-							{#if maxError}<p id="{uid}-max-err" class="mt-1 text-xs text-red-600">
-									{maxError}
-								</p>{/if}
-						</div>
-						<button type="submit" class="btn-secondary">{m.common_apply()}</button>
-					</div>
-				</fieldset>
-			</form>
-		</div>
-	{/if}
 
 	{#if chips.length > 0}
 		<div class="flex flex-wrap items-center gap-2">
@@ -526,29 +523,37 @@
 										class="flex justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 									>
 										{#if siteUrl}
-											<!-- eslint-disable svelte/no-navigation-without-resolve -- external storefront URL -->
-											<a
-												class="btn-icon btn-ghost size-8"
-												href={siteUrl}
-												target="_blank"
-												rel="noopener noreferrer"
-												title={m.products_view_on_site()}
-												aria-label={m.products_view_on_site()}
-											>
-												<Icon name="external" size={16} />
-											</a>
-											<!-- eslint-enable svelte/no-navigation-without-resolve -->
+											<Tip text={m.products_view_on_site()}>
+												{#snippet children({ props })}
+													<!-- eslint-disable svelte/no-navigation-without-resolve -- external storefront URL -->
+													<a
+														{...props}
+														class="btn-icon btn-ghost size-8"
+														href={siteUrl}
+														target="_blank"
+														rel="noopener noreferrer"
+														aria-label={m.products_view_on_site()}
+													>
+														<Icon name="external" size={16} />
+													</a>
+													<!-- eslint-enable svelte/no-navigation-without-resolve -->
+												{/snippet}
+											</Tip>
 										{/if}
 										{#if session.can('products:delete')}
-											<button
-												type="button"
-												class="btn-icon btn-ghost size-8 hover:bg-rose-50 hover:text-rose-600"
-												title={m.products_delete_tooltip()}
-												aria-label={m.products_delete_tooltip()}
-												onclick={() => remove(product)}
-											>
-												<Icon name="trash" size={16} />
-											</button>
+											<Tip text={m.products_delete_tooltip()}>
+												{#snippet children({ props })}
+													<button
+														{...props}
+														type="button"
+														class="btn-icon btn-ghost size-8 hover:bg-rose-50 hover:text-rose-600"
+														aria-label={m.products_delete_tooltip()}
+														onclick={() => remove(product)}
+													>
+														<Icon name="trash" size={16} />
+													</button>
+												{/snippet}
+											</Tip>
 										{/if}
 									</div>
 								</td>

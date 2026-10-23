@@ -4,6 +4,7 @@
 	import Field from '$lib/components/Field.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { roleLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
@@ -68,11 +69,12 @@
 		</Field>
 		<Field label={m.staff_invite_role()} required error={errors.role}>
 			{#snippet children(control)}
-				<select {...control} class="input" bind:value={role}>
-					{#each ROLES as r (r)}
-						<option value={r}>{roleLabel(r)}</option>
-					{/each}
-				</select>
+				<Select
+					{control}
+					value={role}
+					items={ROLES.map((r) => ({ value: r, label: roleLabel(r) }))}
+					onchange={(v) => (role = v as typeof role)}
+				/>
 			{/snippet}
 		</Field>
 		{#if role === 'admin'}

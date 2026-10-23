@@ -9,6 +9,8 @@
 </script>
 
 <script lang="ts" generics="T extends string">
+	import { ToggleGroup } from 'bits-ui';
+
 	let {
 		tabs,
 		value,
@@ -17,34 +19,35 @@
 	}: {
 		tabs: FilterTab<T>[];
 		value: T | '';
-		/** Accessible name of the tab group. */
+		/** Accessible name of the group. */
 		label: string;
 		onselect: (value: T | '') => void;
 	} = $props();
+
+	// ToggleGroup needs a non-empty value per item; "All" is '' in the app.
+	const ALL = '__all__';
 </script>
 
-<!-- A row of filter buttons (not ARIA tabs: each one changes the list's query, like a segmented filter). -->
-<div class="-mb-px flex gap-1 overflow-x-auto" role="group" aria-label={label}>
+<!-- A filter, not ARIA tabs: each button re-queries the list below. -->
+<ToggleGroup.Root
+	type="single"
+	value={value || ALL}
+	aria-label={label}
+	onValueChange={(next) => {
+		if (!next) return;
+		onselect((next === ALL ? '' : next) as T | '');
+	}}
+	class="-mb-px flex gap-1 overflow-x-auto"
+>
 	{#each tabs as tab (tab.value)}
-		{@const active = tab.value === value}
-		<button
-			type="button"
-			aria-pressed={active}
-			class={[
-				'flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors',
-				active
-					? 'border-brand-400 text-brand-800'
-					: 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-800'
-			]}
-			onclick={() => onselect(tab.value)}
+		<ToggleGroup.Item
+			value={tab.value || ALL}
+			class="group flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium whitespace-nowrap text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-800 focus-visible:bg-zinc-50 focus-visible:outline-none data-[state=on]:border-brand-400 data-[state=on]:text-brand-800"
 		>
 			{tab.label}
 			{#if tab.count !== undefined}
 				<span
-					class={[
-						'min-w-6 rounded-full px-1.5 py-px text-center text-xs tabular-nums',
-						active ? 'bg-brand-100 text-brand-800' : 'bg-zinc-100 text-zinc-500'
-					]}
+					class="min-w-6 rounded-full bg-zinc-100 px-1.5 py-px text-center text-xs text-zinc-500 tabular-nums group-data-[state=on]:bg-brand-100 group-data-[state=on]:text-brand-800"
 				>
 					{#if tab.count === null}
 						<span class="inline-block h-2 w-3 animate-pulse rounded bg-zinc-200"></span>
@@ -53,6 +56,6 @@
 					{/if}
 				</span>
 			{/if}
-		</button>
+		</ToggleGroup.Item>
 	{/each}
-</div>
+</ToggleGroup.Root>

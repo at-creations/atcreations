@@ -4,6 +4,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { permissionLabel, roleLabel } from '$lib/i18n';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
@@ -61,11 +62,12 @@
 				<Icon name="right" class="mb-2 text-zinc-400" />
 				<Field label={m.staff_new_role()} class="min-w-48 flex-1">
 					{#snippet children(control)}
-						<select {...control} class="input" bind:value={role}>
-							{#each ROLES as r (r)}
-								<option value={r}>{roleLabel(r)}</option>
-							{/each}
-						</select>
+						<Select
+							{control}
+							value={role}
+							items={ROLES.map((r) => ({ value: r, label: roleLabel(r) }))}
+							onchange={(v) => (role = v as typeof role)}
+						/>
 					{/snippet}
 				</Field>
 			</div>

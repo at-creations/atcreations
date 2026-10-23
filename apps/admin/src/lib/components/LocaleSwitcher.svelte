@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Select } from 'bits-ui';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale, locales, setLocale } from '$lib/paraglide/runtime.js';
 	import Icon from './Icon.svelte';
@@ -6,30 +7,48 @@
 	let { compact = false }: { /** Show only the language code (top bar). */ compact?: boolean } =
 		$props();
 
-	const uid = $props.id();
-	const labels: Record<(typeof locales)[number], () => string> = {
-		en: m.lang_en,
-		vi: m.lang_vi
-	};
+	type Locale = (typeof locales)[number];
+	const labels: Record<Locale, () => string> = { en: m.lang_en, vi: m.lang_vi };
+	const items = $derived(locales.map((l) => ({ value: l, label: labels[l]() })));
+	const current = getLocale();
 </script>
 
-<div
-	class="relative flex h-9 items-center rounded-lg text-zinc-600 focus-within:ring-2 focus-within:ring-brand-600/30 hover:bg-zinc-100 hover:text-zinc-900"
+<Select.Root
+	type="single"
+	value={current}
+	{items}
+	onValueChange={(v) => {
+		if (v && v !== current) setLocale(v as Locale);
+	}}
 >
-	<Icon name="globe" size={16} class="pointer-events-none absolute left-2.5" />
-	<label class="sr-only" for="{uid}-locale">{m.language()}</label>
-	<select
-		id="{uid}-locale"
-		class={[
-			'h-full cursor-pointer appearance-none rounded-lg bg-transparent pr-3 pl-8 text-sm font-medium focus:outline-none',
-			compact && 'uppercase'
-		]}
+	<Select.Trigger
+		aria-label={m.language()}
 		title={m.language()}
-		value={getLocale()}
-		onchange={(event) => setLocale(event.currentTarget.value as (typeof locales)[number])}
+		class="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none data-[state=open]:bg-zinc-100"
 	>
-		{#each locales as locale (locale)}
-			<option value={locale}>{compact ? locale.toUpperCase() : labels[locale]()}</option>
-		{/each}
-	</select>
-</div>
+		<Icon name="globe" size={16} />
+		<span class={compact ? 'uppercase' : ''}>{compact ? current : labels[current]()}</span>
+	</Select.Trigger>
+	<Select.Portal>
+		<Select.Content
+			sideOffset={4}
+			align="end"
+			class="z-[60] min-w-36 animate-pop-in rounded-xl border border-zinc-200 bg-white p-1 shadow-popover"
+		>
+			<Select.Viewport>
+				{#each items as item (item.value)}
+					<Select.Item
+						value={item.value}
+						label={item.label}
+						class="flex h-8 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 text-sm text-zinc-700 outline-none select-none data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900"
+					>
+						{#snippet children({ selected })}
+							{item.label}
+							{#if selected}<Icon name="check" size={14} class="text-brand-600" />{/if}
+						{/snippet}
+					</Select.Item>
+				{/each}
+			</Select.Viewport>
+		</Select.Content>
+	</Select.Portal>
+</Select.Root>

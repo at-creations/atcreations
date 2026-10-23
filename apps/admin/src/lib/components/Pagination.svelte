@@ -2,6 +2,7 @@
 	import type { PageMeta } from '@atcreations/api-types';
 	import { m } from '$lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
+	import Select from './ui/Select.svelte';
 
 	let {
 		meta,
@@ -15,7 +16,6 @@
 		onpagesize?: (size: number) => void;
 	} = $props();
 
-	const uid = $props.id();
 	const start = $derived(meta.total === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1);
 	const end = $derived(Math.min(meta.page * meta.pageSize, meta.total));
 	const totalPages = $derived(Math.max(1, meta.totalPages));
@@ -28,20 +28,17 @@
 	<p>{m.pagination_showing({ start, end, total: meta.total })}</p>
 	<div class="flex items-center gap-3">
 		{#if onpagesize}
-			<label class="flex items-center gap-2" for="{uid}-size">
+			<div class="flex items-center gap-2">
 				<span>{m.pagination_show()}</span>
-				<select
-					id="{uid}-size"
-					class="input w-auto py-1"
-					aria-label={m.pagination_per_page()}
-					value={meta.pageSize}
-					onchange={(e) => onpagesize?.(Number(e.currentTarget.value))}
-				>
-					{#each pageSizes as size (size)}
-						<option value={size}>{size}</option>
-					{/each}
-				</select>
-			</label>
+				<Select
+					size="sm"
+					class="w-16"
+					label={m.pagination_per_page()}
+					value={String(meta.pageSize)}
+					items={pageSizes.map((n) => ({ value: String(n), label: String(n) }))}
+					onchange={(v) => onpagesize?.(Number(v))}
+				/>
+			</div>
 		{/if}
 		<button
 			type="button"

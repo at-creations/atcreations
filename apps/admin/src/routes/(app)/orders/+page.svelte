@@ -12,6 +12,7 @@
 	import Pagination from '$lib/components/Pagination.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { formatDateTime, orderStatusLabel } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages.js';
 	import { orderListQuery, pendingOrderCountQuery, type OrderListParams } from '$lib/queries';
@@ -160,18 +161,13 @@
 						onchange={(e) => navigate({ to: e.currentTarget.value })}
 					/>
 				</div>
-				<label for="{uid}-sort" class="sr-only">{m.common_sort_by()}</label>
-				<select
-					id="{uid}-sort"
-					class="input w-auto"
+				<Select
+					label={m.common_sort_by()}
+					class="w-auto min-w-40"
 					value={filters.sort}
-					onchange={(e) =>
-						navigate({ sort: e.currentTarget.value === 'newest' ? null : e.currentTarget.value })}
-				>
-					{#each SORTS as sort (sort)}
-						<option value={sort}>{sortLabels[sort]()}</option>
-					{/each}
-				</select>
+					items={SORTS.map((s) => ({ value: s, label: sortLabels[s]() }))}
+					onchange={(v) => navigate({ sort: v === 'newest' ? null : v })}
+				/>
 				{#if hasFilters}
 					<button type="button" class="btn-ghost" onclick={clearFilters}
 						>{m.products_clear_filters()}</button

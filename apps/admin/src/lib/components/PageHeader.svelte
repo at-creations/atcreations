@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Icon from './Icon.svelte';
+	import Tip from './ui/Tip.svelte';
 
 	let {
 		title,
@@ -30,14 +31,18 @@
 	<div class="flex min-w-0 items-start gap-3">
 		{#if back}
 			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolved or external URL -->
-			<a
-				href={back.href}
-				class="btn-secondary mt-0.5 size-8 shrink-0 px-0"
-				aria-label={back.label}
-				title={back.label}
-			>
-				<Icon name="left" size={16} />
-			</a>
+			<Tip text={back.label}>
+				{#snippet children({ props })}
+					<a
+						{...props}
+						href={back.href}
+						class="btn-secondary mt-0.5 size-8 shrink-0 px-0"
+						aria-label={back.label}
+					>
+						<Icon name="left" size={16} />
+					</a>
+				{/snippet}
+			</Tip>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/if}
 		{@render leading?.()}

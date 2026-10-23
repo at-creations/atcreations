@@ -4,6 +4,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
 	import LocaleSwitcher from './LocaleSwitcher.svelte';
+	import Tip from './ui/Tip.svelte';
 
 	let {
 		drawerOpen,
@@ -46,16 +47,20 @@
 	<div class="ml-auto flex items-center gap-1">
 		{#if siteUrl}
 			<!-- eslint-disable svelte/no-navigation-without-resolve -- external storefront URL -->
-			<a
-				href={siteUrl}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="btn-icon btn-ghost"
-				title={m.nav_view_store()}
-				aria-label={m.nav_view_store()}
-			>
-				<Icon name="external" size={18} />
-			</a>
+			<Tip text={m.nav_view_store()}>
+				{#snippet children({ props })}
+					<a
+						{...props}
+						href={siteUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="btn-icon btn-ghost"
+						aria-label={m.nav_view_store()}
+					>
+						<Icon name="external" size={18} />
+					</a>
+				{/snippet}
+			</Tip>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/if}
 		<LocaleSwitcher compact />

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { Collapsible } from 'bits-ui';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import BarList from '$lib/components/charts/BarList.svelte';
 	import StatTile from '$lib/components/charts/StatTile.svelte';
 	import TimeChart from '$lib/components/charts/TimeChart.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RequirePermission from '$lib/components/RequirePermission.svelte';
@@ -312,38 +314,44 @@
 		</div>
 
 		{#if data}
-			<details class="group mt-6 card">
-				<summary
-					class="flex cursor-pointer list-none items-center justify-between px-5 py-3.5 text-sm font-semibold text-zinc-900"
+			<Collapsible.Root class="mt-6 card">
+				<Collapsible.Trigger
+					class="group flex w-full items-center justify-between rounded-2xl px-5 py-3.5 text-sm font-semibold text-zinc-900 focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none"
 				>
 					{m.an_daily_table()}
-					<span class="text-xs font-normal text-zinc-400 group-open:hidden">{m.an_show()}</span>
-				</summary>
-				<div class="overflow-x-auto border-t border-zinc-100">
-					<table class="w-full text-left text-sm">
-						<thead class="bg-zinc-50/80">
-							<tr>
-								<th scope="col" class="th pl-5">{m.an_date()}</th>
-								<th scope="col" class="th text-right">{m.an_revenue()}</th>
-								<th scope="col" class="th text-right">{m.an_orders()}</th>
-								<th scope="col" class="th text-right">{m.an_visitors()}</th>
-								<th scope="col" class="th pr-5 text-right">{m.an_page_views()}</th>
-							</tr>
-						</thead>
-						<tbody class="divide-y divide-zinc-100 tabular-nums">
-							{#each [...data.daily].reverse() as d (d.date)}
+					<Icon
+						name="down"
+						size={16}
+						class="text-zinc-400 transition-transform group-data-[state=open]:rotate-180"
+					/>
+				</Collapsible.Trigger>
+				<Collapsible.Content>
+					<div class="overflow-x-auto border-t border-zinc-100">
+						<table class="w-full text-left text-sm">
+							<thead class="bg-zinc-50/80">
 								<tr>
-									<td class="td pl-5 text-zinc-600">{dayLong.format(asDate(d.date))}</td>
-									<td class="td text-right">{formatCAD(d.revenueCents)}</td>
-									<td class="td text-right">{d.orders}</td>
-									<td class="td text-right">{compactNumber(d.visitors)}</td>
-									<td class="td pr-5 text-right">{compactNumber(d.pageViews)}</td>
+									<th scope="col" class="th pl-5">{m.an_date()}</th>
+									<th scope="col" class="th text-right">{m.an_revenue()}</th>
+									<th scope="col" class="th text-right">{m.an_orders()}</th>
+									<th scope="col" class="th text-right">{m.an_visitors()}</th>
+									<th scope="col" class="th pr-5 text-right">{m.an_page_views()}</th>
 								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			</details>
+							</thead>
+							<tbody class="divide-y divide-zinc-100 tabular-nums">
+								{#each [...data.daily].reverse() as d (d.date)}
+									<tr>
+										<td class="td pl-5 text-zinc-600">{dayLong.format(asDate(d.date))}</td>
+										<td class="td text-right">{formatCAD(d.revenueCents)}</td>
+										<td class="td text-right">{d.orders}</td>
+										<td class="td text-right">{compactNumber(d.visitors)}</td>
+										<td class="td pr-5 text-right">{compactNumber(d.pageViews)}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</Collapsible.Content>
+			</Collapsible.Root>
 			<p class="mt-4 text-xs text-zinc-400">{m.an_privacy_note({ timezone: data.timezone })}</p>
 		{/if}
 	{/if}

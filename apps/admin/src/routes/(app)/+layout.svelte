@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
+	import { Dialog } from 'bits-ui';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { useClerkContext } from 'svelte-clerk';
@@ -138,15 +139,7 @@
 		clearCachedMe();
 		await clerk.clerk?.signOut({ redirectUrl: '/sign-in' });
 	}
-
-	const drawerHidden = $derived(!isDesktop.current && !drawerOpen);
 </script>
-
-<svelte:window
-	onkeydown={(event) => {
-		if (event.key === 'Escape' && drawerOpen) drawerOpen = false;
-	}}
-/>
 
 {#snippet skeleton()}
 	<div class="min-h-screen lg:pl-60" role="status" aria-label={m.auth_verifying()}>
@@ -209,27 +202,31 @@
 			>{m.skip_to_content()}</a
 		>
 		<div class="min-h-screen lg:pl-60">
-			{#if drawerOpen && !isDesktop.current}
-				<button
-					type="button"
-					class="fixed inset-0 z-40 bg-zinc-900/40 backdrop-blur-[1px] lg:hidden"
-					aria-label={m.nav_close()}
-					tabindex="-1"
-					onclick={() => (drawerOpen = false)}
-				></button>
+			{#if isDesktop.current}
+				<aside id="admin-sidebar" class="fixed inset-y-0 left-0 z-40 w-60">
+					<Sidebar />
+				</aside>
+			{:else}
+				<!-- Phones and tablets: the sidebar is a modal sheet (focus trap, Escape, outside click). -->
+				<Dialog.Root bind:open={drawerOpen}>
+					<Dialog.Portal>
+						<Dialog.Overlay class="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-[1px]" />
+						<Dialog.Content
+							id="admin-sidebar"
+							class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] animate-slide-in shadow-popover focus:outline-none"
+						>
+							<Dialog.Title class="sr-only">{m.nav_main()}</Dialog.Title>
+							<Sidebar onnavigate={() => (drawerOpen = false)} />
+							<Dialog.Close
+								class="btn-icon btn-ghost absolute top-2.5 right-2.5 size-8"
+								aria-label={m.nav_close()}
+							>
+								<Icon name="x" size={18} />
+							</Dialog.Close>
+						</Dialog.Content>
+					</Dialog.Portal>
+				</Dialog.Root>
 			{/if}
-
-			<aside
-				id="admin-sidebar"
-				class={[
-					'fixed inset-y-0 left-0 z-50 w-60 transition-transform duration-200 lg:translate-x-0',
-					drawerOpen ? 'translate-x-0 shadow-popover' : '-translate-x-full'
-				]}
-				inert={drawerHidden}
-				aria-hidden={drawerHidden ? 'true' : undefined}
-			>
-				<Sidebar onnavigate={() => (drawerOpen = false)} />
-			</aside>
 
 			<Topbar
 				{drawerOpen}
