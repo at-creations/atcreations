@@ -57,15 +57,16 @@ type config struct {
 func main() {
 	apply := flag.Bool("apply", false, "write to the target database and storage (default: dry run)")
 	concurrency := flag.Int("concurrency", 4, "parallel product imports")
+	overwrite := flag.Bool("overwrite", false, "replace categories and products that already exist (before go-live only: discards admin edits, uploaded images and stock changes)")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	if err := run(*apply, *concurrency); err != nil {
+	if err := run(*apply, *overwrite, *concurrency); err != nil {
 		slog.Error("migration failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(apply bool, concurrency int) error {
+func run(apply, overwrite bool, concurrency int) error {
 	var cfg config
 	if err := env.Parse(&cfg); err != nil {
 		return err
@@ -126,7 +127,7 @@ func run(apply bool, concurrency int) error {
 	}
 
 	slog.Info("starting", "mode", map[bool]string{true: "APPLY", false: "dry run"}[apply], "legacy_db", oldDBName, "target_db", cfg.MongoDatabase)
-	runner := migrate.NewRunner(oldDB, targetDB, cat, store, storage, migrate.Options{Apply: apply, OldCDN: cfg.OldCDN, Concurrency: concurrency})
+	runner := migrate.NewRunner(oldDB, targetDB, cat, store, storage, migrate.Options{Apply: apply, Overwrite: overwrite, OldCDN: cfg.OldCDN, Concurrency: concurrency})
 	rep, err := runner.Run(ctx)
 	if err != nil {
 		return err
@@ -137,8 +138,8 @@ func run(apply bool, concurrency int) error {
 	}
 
 	fmt.Printf("\n%s summary\n", map[bool]string{true: "Migration", false: "Dry-run"}[apply])
-	fmt.Printf("  categories:            %d\n", rep.Categories)
-	fmt.Printf("  products:              %d (%d without price → \"contact for price\")\n", rep.Products, rep.ProductsWithoutPrice)
+	fmt.Printf("  categories:            %d (%d already there, kept)\n", rep.Categories, rep.CategoriesKept)
+	fmt.Printf("  products:              %d (%d without price → \"contact for price\"; %d already there, kept)\n", rep.Products, rep.ProductsWithoutPrice, rep.ProductsKept)
 	fmt.Printf("  images:                %d (%d already migrated, reused)\n", rep.Images, rep.ImagesReused)
 	fmt.Printf("  store info:            %d\n", rep.StoreInfo)
 	fmt.Printf("  warnings:              %d\n", len(rep.Warnings))

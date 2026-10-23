@@ -536,8 +536,14 @@ func (s *Service) ReorderProductImages(ctx context.Context, actor string, id bso
 		delete(byID, imgID)
 		reordered = append(reordered, img)
 	}
-	// Guard against a concurrent upload/delete changing the set meanwhile.
-	res, err := s.products.UpdateOne(ctx, bson.M{"_id": id, "images": bson.M{"$size": len(p.Images)}},
+	// Guard against a concurrent upload/delete/reorder meanwhile: the stored list must still be
+	// exactly the one read (same ids, same order). A size check alone misses remove+add.
+	readIDs := make(bson.A, 0, len(p.Images))
+	for _, img := range p.Images {
+		readIDs = append(readIDs, img.ID)
+	}
+	unchanged := bson.M{"$eq": bson.A{bson.M{"$ifNull": bson.A{"$images.id", bson.A{}}}, readIDs}}
+	res, err := s.products.UpdateOne(ctx, bson.M{"_id": id, "$expr": unchanged},
 		bson.M{"$set": bson.M{"images": reordered, "updatedAt": time.Now().UTC(), "updatedBy": actor}})
 	if err != nil {
 		return ProductDTO{}, err

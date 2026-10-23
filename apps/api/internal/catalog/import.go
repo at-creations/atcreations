@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,11 +16,43 @@ import (
 )
 
 // Data import (used by cmd/migrate). Records keep their ids, so re-running an
-// import replaces documents instead of duplicating them. Derived fields are
-// computed exactly as for edits made through the API.
+// import never duplicates them. By default existing records are left alone:
+// after go-live they hold edits, images and stock that the legacy data must not
+// overwrite. Derived fields are computed exactly as for edits made through the API.
 
-// ImportCategory upserts a category by id.
-func (s *Service) ImportCategory(ctx context.Context, c *Category) error {
+// ImportMode says what an import does with a record that already exists.
+type ImportMode int
+
+const (
+	// ImportKeep inserts new records only and leaves existing ones untouched.
+	ImportKeep ImportMode = iota
+	// ImportOverwrite replaces existing records (only for re-runs before go-live).
+	ImportOverwrite
+)
+
+// ErrImportExists is returned in ImportKeep mode when the record already exists.
+var ErrImportExists = errors.New("already imported; kept as is")
+
+// ProductExists reports whether a product with this id exists.
+func (s *Service) ProductExists(ctx context.Context, id bson.ObjectID) (bool, error) {
+	n, err := s.products.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
+	return n > 0, err
+}
+
+// insertNew inserts doc, mapping a clash on an existing id to ErrImportExists.
+func insertNew(ctx context.Context, exists func(context.Context, bson.ObjectID) (bool, error), insert func() error, id bson.ObjectID) error {
+	err := insert()
+	if err == nil || !mongox.IsDuplicateKey(err) {
+		return err
+	}
+	if found, ferr := exists(ctx, id); ferr == nil && found {
+		return ErrImportExists
+	}
+	return err // another unique index (e.g. the slug) clashed
+}
+
+// ImportCategory inserts a category by id (ImportKeep) or replaces it (ImportOverwrite).
+func (s *Service) ImportCategory(ctx context.Context, c *Category, mode ImportMode) error {
 	if c.ID.IsZero() || !textx.ValidSlug(c.Slug) || strings.TrimSpace(c.Name.EN) == "" {
 		return fmt.Errorf("category %s: id, valid slug and English name are required", c.ID.Hex())
 	}
@@ -30,18 +63,30 @@ func (s *Service) ImportCategory(ctx context.Context, c *Category) error {
 	if c.UpdatedAt.IsZero() {
 		c.UpdatedAt = now
 	}
-	if _, err := s.categories.ReplaceOne(ctx, bson.M{"_id": c.ID}, c, options.Replace().SetUpsert(true)); err != nil {
+	var err error
+	if mode == ImportOverwrite {
+		_, err = s.categories.ReplaceOne(ctx, bson.M{"_id": c.ID}, c, options.Replace().SetUpsert(true))
+	} else {
+		err = insertNew(ctx, s.CategoryExists, func() error {
+			_, err := s.categories.InsertOne(ctx, c)
+			return err
+		}, c.ID)
+	}
+	if errors.Is(err, ErrImportExists) {
+		return err
+	}
+	if err != nil {
 		return fmt.Errorf("import category %s: %w", c.Slug, err)
 	}
 	s.cache.Invalidate(ctx, redisx.NSCatalog)
 	return nil
 }
 
-// ImportProduct upserts a product by id after computing its derived fields
-// (final price, search text, sort keys). It never lowers an existing version,
-// so admin edit forms opened before a re-import get a conflict, not a silent
-// overwrite.
-func (s *Service) ImportProduct(ctx context.Context, p *Product) error {
+// ImportProduct inserts a product by id (ImportKeep) or replaces it (ImportOverwrite) after
+// computing its derived fields (final price, search text, sort keys). An overwrite bumps the
+// version, so admin edit forms opened before it get a conflict, and only applies if the product
+// did not change since it was read.
+func (s *Service) ImportProduct(ctx context.Context, p *Product, mode ImportMode) error {
 	if p.ID.IsZero() || !textx.ValidSlug(p.Slug) || strings.TrimSpace(p.Name.EN) == "" {
 		return fmt.Errorf("product %s: id, valid slug and English name are required", p.ID.Hex())
 	}
@@ -66,19 +111,40 @@ func (s *Service) ImportProduct(ctx context.Context, p *Product) error {
 		p.UpdatedAt = now
 	}
 
-	var existing struct {
-		Version int64 `bson:"version"`
-	}
-	err := s.products.FindOne(ctx, bson.M{"_id": p.ID}, options.FindOne().SetProjection(bson.M{"version": 1})).Decode(&existing)
-	switch {
-	case err == nil:
-		p.Version = existing.Version + 1
-	case mongox.IsNotFound(err):
+	insert := func() error {
 		p.Version = 1
-	default:
+		return insertNew(ctx, s.ProductExists, func() error {
+			_, err := s.products.InsertOne(ctx, p)
+			return err
+		}, p.ID)
+	}
+	var err error
+	if mode == ImportOverwrite {
+		var existing struct {
+			Version int64 `bson:"version"`
+		}
+		ferr := s.products.FindOne(ctx, bson.M{"_id": p.ID}, options.FindOne().SetProjection(bson.M{"version": 1})).Decode(&existing)
+		switch {
+		case ferr == nil:
+			p.Version = existing.Version + 1
+			// Conditional on the version read: an edit made meanwhile is not lost.
+			res, rerr := s.products.ReplaceOne(ctx, bson.M{"_id": p.ID, "version": existing.Version}, p)
+			if rerr == nil && res.MatchedCount == 0 {
+				rerr = errors.New("changed while importing; run the import again")
+			}
+			err = rerr
+		case mongox.IsNotFound(ferr):
+			err = insert()
+		default:
+			err = ferr
+		}
+	} else {
+		err = insert()
+	}
+	if errors.Is(err, ErrImportExists) {
 		return err
 	}
-	if _, err := s.products.ReplaceOne(ctx, bson.M{"_id": p.ID}, p, options.Replace().SetUpsert(true)); err != nil {
+	if err != nil {
 		return fmt.Errorf("import product %s: %w", p.Slug, err)
 	}
 	s.cache.Invalidate(ctx, redisx.NSCatalog)

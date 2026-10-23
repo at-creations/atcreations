@@ -86,6 +86,7 @@ type oldStoreInfo struct {
 
 type Options struct {
 	Apply       bool   // false = dry run: read and plan, write nothing
+	Overwrite   bool   // replace categories/products that already exist (only before go-live)
 	OldCDN      string // base URL serving legacy object keys
 	Concurrency int
 }
@@ -114,8 +115,17 @@ func NewRunner(old *mongo.Database, target *mongo.Database, cat *catalog.Service
 
 type Report struct {
 	Categories, Products, ProductsWithoutPrice, Images, ImagesReused, StoreInfo int
-	Warnings                                                                    []string
-	mu                                                                          sync.Mutex
+	// Already in the target and left untouched (no -overwrite).
+	CategoriesKept, ProductsKept int
+	Warnings                     []string
+	mu                           sync.Mutex
+}
+
+func (m *Runner) mode() catalog.ImportMode {
+	if m.opt.Overwrite {
+		return catalog.ImportOverwrite
+	}
+	return catalog.ImportKeep
 }
 
 func (r *Report) warn(format string, args ...any) {
@@ -170,6 +180,16 @@ func (m *Runner) migrateCategories(ctx context.Context, rep *Report) (map[bson.O
 			slug = textx.Slugify(o.Name)
 			rep.warn("category %s: slug %q is not URL-safe, using %q", o.ID.Hex(), o.Slug, slug)
 		}
+		known[o.ID] = true
+		if !m.opt.Overwrite {
+			// Existing records hold live edits: skip them before any image work.
+			if exists, err := m.catalog.CategoryExists(ctx, o.ID); err != nil {
+				return nil, err
+			} else if exists {
+				rep.CategoriesKept++
+				continue
+			}
+		}
 		c := &catalog.Category{
 			ID: o.ID, Slug: slug,
 			Name:        catalog.LocalizedText{EN: strings.TrimSpace(o.Name), VI: strings.TrimSpace(o.NameVI)},
@@ -191,11 +211,13 @@ func (m *Runner) migrateCategories(ctx context.Context, rep *Report) (map[bson.O
 			}
 		}
 		if m.opt.Apply {
-			if err := m.catalog.ImportCategory(ctx, c); err != nil {
+			if err := m.catalog.ImportCategory(ctx, c, m.mode()); errors.Is(err, catalog.ErrImportExists) {
+				rep.CategoriesKept++
+				continue
+			} else if err != nil {
 				return nil, err
 			}
 		}
-		known[o.ID] = true
 		rep.Categories++
 		slog.InfoContext(ctx, "category", "slug", slug, "image", c.Image != nil)
 	}
@@ -287,6 +309,15 @@ func dollarsToCents(v float64) *int64 {
 }
 
 func (m *Runner) migrateProduct(ctx context.Context, rep *Report, o oldProduct, slug string, categories map[bson.ObjectID]bool) error {
+	if !m.opt.Overwrite {
+		// Existing records hold live edits (stock, prices, images): skip them before any image work.
+		if exists, err := m.catalog.ProductExists(ctx, o.ID); err != nil {
+			return err
+		} else if exists {
+			rep.add(func() { rep.ProductsKept++ })
+			return nil
+		}
+	}
 	p := &catalog.Product{
 		ID: o.ID, Slug: slug, Status: catalog.StatusPublished,
 		Name:            catalog.LocalizedText{EN: strings.TrimSpace(o.Name), VI: strings.TrimSpace(o.NameVI)},
@@ -338,7 +369,10 @@ func (m *Runner) migrateProduct(ctx context.Context, rep *Report, o oldProduct, 
 	}
 
 	if m.opt.Apply {
-		if err := m.catalog.ImportProduct(ctx, p); err != nil {
+		if err := m.catalog.ImportProduct(ctx, p, m.mode()); errors.Is(err, catalog.ErrImportExists) {
+			rep.add(func() { rep.ProductsKept++ })
+			return nil
+		} else if err != nil {
 			return err
 		}
 	}

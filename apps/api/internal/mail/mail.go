@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -21,11 +22,22 @@ type Sender interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// LogSender writes emails to the log; for development only.
-type LogSender struct{}
+// LogSender writes emails to the log instead of sending them. Bodies (customer details, order
+// access codes) are only logged with Verbose, which is meant for local development.
+type LogSender struct {
+	Verbose bool
+}
 
-func (LogSender) Send(ctx context.Context, m Message) error {
-	slog.InfoContext(ctx, "email (not sent: MAIL_PROVIDER=log)", "subject", m.Subject, "text", m.Text)
+func (l LogSender) Send(ctx context.Context, m Message) error {
+	if l.Verbose {
+		slog.InfoContext(ctx, "email (not sent: MAIL_PROVIDER=log)", "subject", m.Subject, "text", m.Text)
+		return nil
+	}
+	domain := ""
+	if at := strings.LastIndexByte(m.To, '@'); at >= 0 {
+		domain = m.To[at+1:]
+	}
+	slog.InfoContext(ctx, "email (not sent: MAIL_PROVIDER=log)", "subject", m.Subject, "to_domain", domain)
 	return nil
 }
 

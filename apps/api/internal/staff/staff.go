@@ -118,7 +118,7 @@ func (s *Service) activeAdmins(ctx context.Context) (int, error) {
 			return 0, clerkError(err)
 		}
 		for _, u := range list.Users {
-			if !u.Banned && auth.IdentityOf(u).Role == auth.RoleAdmin {
+			if !u.Banned && !u.Locked && auth.IdentityOf(u).Role == auth.RoleAdmin {
 				n++
 			}
 		}
@@ -143,7 +143,7 @@ func GuardTarget(actorID, targetID string, targetIsActiveAdmin bool, removesAdmi
 
 func (s *Service) guard(ctx context.Context, target *clerk.User, removesAdmin bool) error {
 	p := auth.PrincipalFrom(ctx)
-	isAdmin := !target.Banned && auth.IdentityOf(target).Role == auth.RoleAdmin
+	isAdmin := !target.Banned && !target.Locked && auth.IdentityOf(target).Role == auth.RoleAdmin
 	admins := 2
 	if isAdmin && removesAdmin {
 		var err error

@@ -2,7 +2,6 @@ package orders
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
@@ -12,10 +11,14 @@ import (
 type Handlers struct {
 	svc            *Service
 	publicCheckout bool
+	loc            *time.Location // the store's time zone: date filters mean local days
 }
 
-func NewHandlers(svc *Service, publicCheckout bool) *Handlers {
-	return &Handlers{svc: svc, publicCheckout: publicCheckout}
+func NewHandlers(svc *Service, publicCheckout bool, loc *time.Location) *Handlers {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return &Handlers{svc: svc, publicCheckout: publicCheckout, loc: loc}
 }
 
 func actor(r *http.Request) string {
@@ -78,7 +81,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) error {
 		if d.raw == "" {
 			continue
 		}
-		t, err := time.Parse(time.DateOnly, d.raw)
+		t, err := time.ParseInLocation(time.DateOnly, d.raw, h.loc)
 		if err != nil {
 			return httpx.BadRequest("from/to must be YYYY-MM-DD dates")
 		}
@@ -150,7 +153,6 @@ func (h *Handlers) SetShipping(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.DecodeJSON(w, r, &in); err != nil {
 		return err
 	}
-	in.Country = strings.ToUpper(in.Country)
 	o, err := h.svc.SetShipping(r.Context(), actor(r), id, in)
 	if err != nil {
 		return err

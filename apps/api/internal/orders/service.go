@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -37,6 +38,7 @@ type Service struct {
 	audit    *audit.Log
 	pepper   []byte
 	cache    *redisx.Cache
+	emails   sync.WaitGroup // background notifications, drained on shutdown
 }
 
 func NewService(client *mongo.Client, db *mongo.Database, storage media.Storage, mailer *Mailer, a *audit.Log, cache *redisx.Cache, pepper string) *Service {
@@ -113,58 +115,92 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Order, string, 
 	}
 	defer sess.EndSession(ctx)
 
-	_, err = sess.WithTransaction(ctx, func(tx context.Context) (any, error) {
-		order.Items = order.Items[:0]
-		order.SubtotalCents, order.DiscountCents = 0, 0
-		for _, id := range orderOfIDs {
-			q := qty[id]
-			var p catalog.Product
-			err := s.products.FindOneAndUpdate(tx,
-				bson.M{"_id": id, "status": catalog.StatusPublished, "hasPrice": true, "stock": bson.M{"$gte": q}},
-				bson.M{"$inc": bson.M{"stock": -q, "version": 1}},
-				options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&p)
-			if mongox.IsNotFound(err) {
-				return nil, httpx.Conflict("product " + id.Hex() + " is unavailable or does not have enough stock")
+	// A clashing order number (unique index) aborts the transaction, so a retry with a new
+	// number has to run the whole transaction again; the callback is re-runnable.
+	for range 5 {
+		_, err = sess.WithTransaction(ctx, func(tx context.Context) (any, error) {
+			order.Items = order.Items[:0]
+			order.SubtotalCents, order.DiscountCents = 0, 0
+			for _, id := range orderOfIDs {
+				q := qty[id]
+				var p catalog.Product
+				err := s.products.FindOneAndUpdate(tx,
+					bson.M{"_id": id, "status": catalog.StatusPublished, "hasPrice": true, "stock": bson.M{"$gte": q}},
+					bson.M{"$inc": bson.M{"stock": -q, "version": 1}},
+					options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&p)
+				if mongox.IsNotFound(err) {
+					return nil, httpx.Conflict("product " + id.Hex() + " is unavailable or does not have enough stock")
+				}
+				if err != nil {
+					return nil, err
+				}
+				unit := *p.PriceCents
+				final := *catalog.FinalPrice(p.PriceCents, p.DiscountPercent)
+				item := Item{
+					ProductID: p.ID, Slug: p.Slug, Name: p.Name, UnitPriceCents: unit,
+					DiscountPercent: p.DiscountPercent, Quantity: q, LineTotalCents: final * int64(q),
+				}
+				if len(p.Images) > 0 {
+					item.ImageURL = s.storage.URL(p.Images[0].Key)
+					item.ImageKey = p.Images[0].Key
+				}
+				order.Items = append(order.Items, item)
+				order.SubtotalCents += unit * int64(q)
+				order.DiscountCents += (unit - final) * int64(q)
 			}
-			if err != nil {
-				return nil, err
-			}
-			unit := *p.PriceCents
-			final := *catalog.FinalPrice(p.PriceCents, p.DiscountPercent)
-			item := Item{
-				ProductID: p.ID, Slug: p.Slug, Name: p.Name, UnitPriceCents: unit,
-				DiscountPercent: p.DiscountPercent, Quantity: q, LineTotalCents: final * int64(q),
-			}
-			if len(p.Images) > 0 {
-				item.ImageURL = s.storage.URL(p.Images[0].Key)
-				item.ImageKey = p.Images[0].Key
-			}
-			order.Items = append(order.Items, item)
-			order.SubtotalCents += unit * int64(q)
-			order.DiscountCents += (unit - final) * int64(q)
-		}
-		order.TotalCents = order.SubtotalCents - order.DiscountCents + order.ShippingCents + order.TaxCents
-		for range 5 {
+			order.TotalCents = order.SubtotalCents - order.DiscountCents + order.ShippingCents + order.TaxCents
 			order.Number = newOrderNumber(now)
 			_, err := s.orders.InsertOne(tx, order)
-			if !mongox.IsDuplicateKey(err) {
-				return nil, err
-			}
+			return nil, err
+		})
+		if !mongox.IsDuplicateKey(err) {
+			break
 		}
-		return nil, fmt.Errorf("could not allocate a unique order number")
-	})
+	}
+	if mongox.IsDuplicateKey(err) {
+		err = fmt.Errorf("could not allocate a unique order number: %w", err)
+	}
 	if err != nil {
 		return nil, "", err
 	}
 	s.cache.Invalidate(ctx, redisx.NSCatalog) // stock changed
 
-	go s.notify(context.WithoutCancel(ctx), order.ID, func(ctx context.Context) error {
+	s.notifyAsync(ctx, order.ID, func(ctx context.Context) error {
 		return s.mailer.Confirmation(ctx, order, accessCode)
 	})
 	return order, accessCode, nil
 }
 
-// notify sends an email in the background and records it on the order.
+// notifyAsync sends an email in the background (the request does not wait for it). A panic
+// in the send is contained, and Wait lets shutdown finish sends already started.
+func (s *Service) notifyAsync(ctx context.Context, id bson.ObjectID, send func(context.Context) error) {
+	ctx = context.WithoutCancel(ctx)
+	s.emails.Go(func() {
+		defer func() {
+			if v := recover(); v != nil {
+				slog.ErrorContext(ctx, "order email panicked", "panic", v, "order", id.Hex())
+			}
+		}()
+		s.notify(ctx, id, send)
+	})
+}
+
+// Wait blocks until background emails finish or ctx ends.
+func (s *Service) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.emails.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("order emails still sending: %w", ctx.Err())
+	}
+}
+
+// notify sends an email and records it on the order.
 func (s *Service) notify(ctx context.Context, id bson.ObjectID, send func(context.Context) error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -239,7 +275,7 @@ func (s *Service) List(ctx context.Context, q ListQuery) ([]Order, httpx.PageMet
 			r["$gte"] = *q.From
 		}
 		if q.To != nil {
-			r["$lt"] = q.To.Add(24 * time.Hour)
+			r["$lt"] = q.To.AddDate(0, 0, 1) // the whole local day, even across a DST change
 		}
 		f["createdAt"] = r
 	}
@@ -329,7 +365,7 @@ func (s *Service) Transition(ctx context.Context, actor string, id bson.ObjectID
 	}
 	if in.Notify == nil || *in.Notify {
 		o := updated
-		go s.notify(context.WithoutCancel(ctx), id, func(ctx context.Context) error { return s.mailer.StatusChanged(ctx, &o) })
+		s.notifyAsync(ctx, id, func(ctx context.Context) error { return s.mailer.StatusChanged(ctx, &o) })
 	}
 	return &updated, nil
 }

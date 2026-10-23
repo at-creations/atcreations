@@ -367,3 +367,83 @@ func TestCategoryReorderAndCounts(t *testing.T) {
 		t.Fatalf("duplicates: %v", err)
 	}
 }
+
+func TestImageReorderKeepsEveryImage(t *testing.T) {
+	cat, _, _ := setup(t)
+	ctx := context.Background()
+	p, err := cat.CreateProduct(ctx, "u", &catalog.ProductInput{Status: catalog.StatusDraft, Name: catalog.NameInput{EN: "Bowl"}, Stock: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"x", "y", "z"} {
+		if err := cat.AttachProductImage(ctx, "u", p.ID, catalog.Image{ID: id, Key: "products/" + id + ".webp", Width: 10, Height: 10}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := cat.ReorderProductImages(ctx, "u", p.ID, []string{"z", "x", "y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, img := range got.Images {
+		order = append(order, img.ID)
+	}
+	if len(order) != 3 || order[0] != "z" || order[1] != "x" || order[2] != "y" {
+		t.Fatalf("order = %v, want [z x y]", order)
+	}
+	// The listed set must match what is stored now.
+	if _, err := cat.ReorderProductImages(ctx, "u", p.ID, []string{"x", "y"}); status(err) != http.StatusUnprocessableEntity {
+		t.Fatalf("incomplete list: err = %v, want 422", err)
+	}
+}
+
+func TestImportKeepsExistingRecords(t *testing.T) {
+	cat, _, _ := setup(t)
+	ctx := context.Background()
+	legacy := func() *catalog.Product {
+		return &catalog.Product{ID: id1, Slug: "legacy-vase", Status: catalog.StatusPublished, Name: catalog.LocalizedText{EN: "Legacy vase"}, Stock: 10, CreatedBy: "migration", UpdatedBy: "migration"}
+	}
+	if err := cat.ImportProduct(ctx, legacy(), catalog.ImportKeep); err != nil {
+		t.Fatal(err)
+	}
+	// After go-live the product is edited (e.g. orders reduced stock).
+	stored := only(t, cat)
+	if _, err := cat.UpdateProduct(ctx, "staff", id1, &catalog.ProductInput{Status: catalog.StatusPublished, Name: catalog.NameInput{EN: "Legacy vase"}, Stock: 3, Version: &stored.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.ImportProduct(ctx, legacy(), catalog.ImportKeep); !errors.Is(err, catalog.ErrImportExists) {
+		t.Fatalf("re-import: err = %v, want ErrImportExists", err)
+	}
+	if p := only(t, cat); p.Stock != 3 {
+		t.Fatalf("stock = %d after re-import, want 3 (kept)", p.Stock)
+	}
+	if err := cat.ImportProduct(ctx, legacy(), catalog.ImportOverwrite); err != nil {
+		t.Fatal(err)
+	}
+	if p := only(t, cat); p.Stock != 10 {
+		t.Fatalf("stock = %d after overwrite, want 10", p.Stock)
+	}
+
+	c := &catalog.Category{ID: id2, Slug: "legacy", Name: catalog.LocalizedText{EN: "Legacy"}}
+	if err := cat.ImportCategory(ctx, c, catalog.ImportKeep); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.ImportCategory(ctx, c, catalog.ImportKeep); !errors.Is(err, catalog.ErrImportExists) {
+		t.Fatalf("category re-import: err = %v, want ErrImportExists", err)
+	}
+}
+
+// only returns the single product in the test database.
+func only(t *testing.T, cat *catalog.Service) catalog.ProductDTO {
+	t.Helper()
+	items, _, err := cat.ListProducts(context.Background(), catalog.ProductQuery{Page: httpx.Page{Page: 1, Size: 2}})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("products: %d (%v), want 1", len(items), err)
+	}
+	return items[0]
+}
+
+var (
+	id1 = bson.NewObjectID()
+	id2 = bson.NewObjectID()
+)

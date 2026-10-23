@@ -12,10 +12,12 @@ export REDIS_URL='redis://:dev-redis-password@127.0.0.1:6379/0'                 
 export S3_ENDPOINT=http://127.0.0.1:9000 S3_BUCKET=atcreations-dev S3_ACCESS_KEY_ID=atcreations-dev S3_SECRET_ACCESS_KEY=dev-rustfs-secret-key
 export CDN_BASE_URL=http://localhost:9000/atcreations-dev
 go run ./cmd/migrate          # dry run: reads everything, checks every image, writes nothing
-go run ./cmd/migrate -apply   # migrate
+go run ./cmd/migrate -apply   # migrate (existing records are kept)
+go run ./cmd/migrate -apply -overwrite   # before go-live only: replace existing records
 ```
 
-- Re-runnable: categories and products keep their ids (replaced, not duplicated); images already migrated are reused (`migration_media` collection), so re-runs don't upload again.
+- Re-runnable: categories and products keep their ids, so nothing is duplicated. Records that already exist are **kept as they are** (after go-live they hold admin edits, uploaded images and stock changed by orders); the summary counts them as "kept". Images already migrated are reused (`migration_media` collection), so re-runs don't upload again.
+- `-overwrite` replaces existing categories and products with the legacy data. Use it only before go-live (e.g. to pick up a mapping fix): it discards admin edits, uploaded images and stock changes. A product edited while the import runs is not overwritten; run it again.
 - Store info is only imported when the new system has none, so later edits are never overwritten.
 - Not migrated: users (invite staff via Clerk), refresh tokens, API keys, raw page views (they contain IP addresses; view totals are kept on products).
 

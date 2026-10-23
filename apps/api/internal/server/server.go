@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -68,6 +69,20 @@ func limiter(rdb *redis.Client) func(name string, n int, window time.Duration) f
 	}
 }
 
+// exceptAdmin applies mw to every route except the admin API.
+func exceptAdmin(mw func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		limited := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/admin" || strings.HasPrefix(r.URL.Path, "/v1/admin/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			limited.ServeHTTP(w, r)
+		})
+	}
+}
+
 func New(d Deps) http.Handler {
 	limit := limiter(d.Redis)
 	r := chi.NewRouter()
@@ -78,7 +93,9 @@ func New(d Deps) http.Handler {
 		httpx.Recover,
 		httpx.SecurityHeaders,
 		corsPolicies(d.Config.CORSPublicOrigins, d.Config.CORSAdminOrigins),
-		limit("global", 300, time.Minute), // per-IP ceiling
+		// Per-IP ceiling for public routes. The admin API has its own, higher limit (staff
+		// browsing while uploading in bulk would otherwise hit this one first).
+		exceptAdmin(limit("global", 300, time.Minute)),
 	)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, httpx.ErrNotFound) })
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +141,8 @@ func New(d Deps) http.Handler {
 
 		// ---- Admin (Clerk-authenticated) ----
 		r.Route("/admin", func(r chi.Router) {
-			r.Use(httpx.NoStore, d.Auth.Handler, limit("admin", 600, time.Minute))
+			// Limited before authentication, so floods of bad tokens are throttled too.
+			r.Use(httpx.NoStore, limit("admin", 600, time.Minute), d.Auth.Handler)
 			can := auth.Require
 
 			r.Get("/me", w(handleMe))

@@ -124,7 +124,7 @@ func run() error {
 		AccessKeyID: cfg.S3AccessKeyID, SecretAccessKey: cfg.S3SecretAccessKey, PublicBaseURL: cfg.CDNBaseURL,
 	})
 
-	var sender mail.Sender = mail.LogSender{}
+	var sender mail.Sender = mail.LogSender{Verbose: cfg.Env == "development" || cfg.Env == "test"}
 	if cfg.MailProvider == "sendgrid" {
 		sender = mail.NewSendGrid(cfg.SendGridKey, cfg.MailFrom, cfg.MailFromName)
 	}
@@ -188,7 +188,7 @@ func run() error {
 
 	handler := server.New(server.Deps{
 		Config: cfg, Mongo: mongoClient, Redis: rdb, Cache: cache, Auth: auth.NewMiddleware(cfg.ClerkAuthorizedParties, directory),
-		Catalog: catalogSvc, Orders: orders.NewHandlers(orderSvc, cfg.PublicCheckoutEnabled),
+		Catalog: catalogSvc, Orders: orders.NewHandlers(orderSvc, cfg.PublicCheckoutEnabled, cfg.AnalyticsLocation),
 		StoreInfo: storeSvc, Staff: staffSvc, Audit: auditLog,
 		Analytics: analytics.NewHandlers(analyticsSvc, cfg.TrustedProxyPrefixes),
 		Uploads:   uploadSvc,
@@ -220,7 +220,12 @@ func run() error {
 	}
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelShutdown()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+	// Emails for orders placed just before the signal still go out (before Mongo disconnects).
+	if werr := orderSvc.Wait(shutdownCtx); werr != nil {
+		slog.Warn("shutdown", "err", werr)
+	}
+	return err
 }
 
 func setupLogging(cfg *config.Config) {

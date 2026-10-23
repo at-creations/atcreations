@@ -128,8 +128,9 @@ func (c *Config) validate() error {
 	}
 
 	c.ClerkAuthorizedParties = trimAll(c.ClerkAuthorizedParties)
-	if c.IsProduction() && len(c.ClerkAuthorizedParties) == 0 {
-		errs = append(errs, errors.New("CLERK_AUTHORIZED_PARTIES is required in production"))
+	if (c.IsProduction() || c.Env == "staging") && len(c.ClerkAuthorizedParties) == 0 {
+		// Otherwise any origin's session token for the same Clerk instance is accepted.
+		errs = append(errs, errors.New("CLERK_AUTHORIZED_PARTIES is required in staging and production"))
 	}
 
 	for _, p := range trimAll(c.TrustedProxies) {

@@ -3,7 +3,10 @@
 package orders
 
 import (
+	"bytes"
+	"encoding/json"
 	"slices"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -54,6 +57,18 @@ type Address struct {
 	Region     string `bson:"region,omitempty" json:"region,omitempty" validate:"max=100"`
 	PostalCode string `bson:"postalCode" json:"postalCode" validate:"required,max=20"`
 	Country    string `bson:"country" json:"country" validate:"required,len=2,uppercase,alpha"`
+}
+
+// UnmarshalJSON accepts country codes in any case ("ca" → "CA"); validation runs after decoding.
+func (a *Address) UnmarshalJSON(data []byte) error {
+	type plain Address
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields() // as strict as the request decoder
+	if err := dec.Decode((*plain)(a)); err != nil {
+		return err
+	}
+	a.Country = strings.ToUpper(strings.TrimSpace(a.Country))
+	return nil
 }
 
 type Item struct {
