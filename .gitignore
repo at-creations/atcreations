@@ -50,3 +50,6 @@ docker/dev/cloudflared/*
 !docker/dev/cloudflared/.gitignore
 !docker/dev/cloudflared/config.example.yml
 !docker/dev/cloudflared/setup.sh
+
+# Dev marketing images (docker/dev/fetch-site-assets.sh)
+docker/dev/site-assets/

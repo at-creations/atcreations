@@ -20,8 +20,9 @@ COPY apps/${APP} ./apps/${APP}
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@atcreations/${APP}..."
 
-# Unprivileged runtime user (the node image ships one with uid 1000).
-RUN chown -R node:node /repo/apps/${APP}
+# Unprivileged runtime user (the node image ships one with uid 1000). The
+# Vite cache dir must exist (owned by node) before a volume is mounted on it.
+RUN mkdir -p /repo/apps/${APP}/node_modules/.vite && chown -R node:node /repo/apps/${APP}
 USER node
 
 ENV PORT=5173

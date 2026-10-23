@@ -41,10 +41,12 @@ pnpm dev:stack:tunnel                  # dev stack + cloudflared
 | Storefront | https://dev.atcreations.ca |
 | Admin | https://dev-admin.atcreations.ca |
 | API | https://dev-api.atcreations.ca |
+| Images (read-only proxy) | https://dev-media.atcreations.ca |
 
-- Runs cloudflared in Docker; nothing to install. Override names with `ZONE`, `TUNNEL_NAME`, `STOREFRONT_HOST`, `ADMIN_HOST`, `API_HOST`. Names are single-level (`dev-admin.`) because Cloudflare's free certificate covers `*.atcreations.ca` but not `*.dev.atcreations.ca`; production names (`atcreations.ca`, `www.`, `admin.`, `api.`, `cdn.`) are refused.
+- Runs cloudflared in Docker; nothing to install. Override names with `ZONE`, `TUNNEL_NAME`, `STOREFRONT_HOST`, `ADMIN_HOST`, `API_HOST`, `MEDIA_HOST`. Names are single-level (`dev-admin.`) because Cloudflare's free certificate covers `*.atcreations.ca` but not `*.dev.atcreations.ca`; production names (`atcreations.ca`, `www.`, `admin.`, `api.`, `cdn.`) are refused.
 - Config and credentials live in `docker/dev/cloudflared/` and are git-ignored (`cert.pem`, `credentials.json`, `config.yml`). Only `credentials.json` and `config.yml` are mounted into the container; `cert.pem` is only needed to run `setup.sh` again.
-- Only the storefront, admin and API are routed. MongoDB, Redis and mongo-express are never exposed; other hostnames return 404.
+- Only the storefront, admin, API and a read-only image proxy (`docker/dev/media/Caddyfile`: anonymous GET/HEAD of image paths, no queries) are routed. RustFS's S3 API, MongoDB, Redis and mongo-express are never exposed; other hostnames return 404.
+- Marketing images (hero, logos, workshop photos): run `bash docker/dev/fetch-site-assets.sh` once; they are uploaded to the bucket's `site/` prefix on every stack start (folder git-ignored).
 - **Protect the hostnames with Cloudflare Access** (Zero Trust → Access → Applications → self-hosted, allow only your team's emails). The dev servers are Vite development servers and are not hardened for the public internet. `config.example.yml` shows how to make cloudflared verify the Access token too.
 - `localhost` keeps working while the tunnel is up. Delete the `DEV_*` lines from the root `.env` to go back to localhost-only URLs.
 

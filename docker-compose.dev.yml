@@ -78,7 +78,9 @@ services:
       AWS_ACCESS_KEY_ID: atcreations-dev
       AWS_SECRET_ACCESS_KEY: dev-rustfs-secret-key
       AWS_DEFAULT_REGION: us-east-1
-    volumes: ["./docker/dev/rustfs-init.sh:/rustfs-init.sh:ro"]
+    volumes:
+      - ./docker/dev/rustfs-init.sh:/rustfs-init.sh:ro
+      - ./docker/dev/site-assets:/site-assets:ro # marketing images (fetch-site-assets.sh)
     depends_on:
       rustfs: { condition: service_healthy }
     restart: "no"
@@ -101,6 +103,9 @@ services:
       CLERK_AUTHORIZED_PARTIES: http://localhost:${ADMIN_PORT:-5174},${DEV_ADMIN_URL:-}
       CLERK_INVITE_REDIRECT_URL: ${DEV_ADMIN_URL:-http://localhost:${ADMIN_PORT:-5174}}/sign-up
       STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
+      # Browsers load images from here: RustFS on localhost, or the read-only
+      # media proxy when the tunnel is set up (DEV_MEDIA_ORIGIN).
+      CDN_BASE_URL: ${DEV_MEDIA_ORIGIN:-http://localhost:${S3_PORT:-9000}}/atcreations-dev
       # Docker networks only: cloudflared and the storefront set X-Forwarded-For.
       TRUSTED_PROXIES: 172.16.0.0/12
     ports: ["127.0.0.1:${API_PORT:-8080}:8080"]
@@ -128,9 +133,14 @@ services:
       PUBLIC_API_URL: ${DEV_API_URL:-http://localhost:${API_PORT:-8080}}
       API_INTERNAL_URL: http://api:8080
       VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
-      PUBLIC_ASSET_BASE_URL: ${PUBLIC_ASSET_BASE_URL:-https://cdn.atcreations.ca/site}
-      CSP_IMG_ORIGINS: http://localhost:${S3_PORT:-9000} # product images from RustFS
+      # Marketing images from the local bucket (docker/dev/fetch-site-assets.sh).
+      PUBLIC_ASSET_BASE_URL: ${DEV_MEDIA_ORIGIN:-http://localhost:${S3_PORT:-9000}}/atcreations-dev/site
+      CSP_IMG_ORIGINS: ${DEV_MEDIA_ORIGIN:-http://localhost:${S3_PORT:-9000}} # product images
     ports: ["127.0.0.1:${STOREFRONT_PORT:-5173}:5173"]
+    # Persist Vite's pre-bundled deps: rebuilding them on every container start
+    # changes their URLs, and an open tab then mixes two Svelte runtimes and
+    # fails to hydrate (blank page until a hard refresh).
+    volumes: ["storefront_vite_cache:/repo/apps/storefront/node_modules/.vite"]
     depends_on:
       api: { condition: service_healthy }
     develop:
@@ -163,8 +173,12 @@ services:
       PUBLIC_API_URL: ${DEV_API_URL:-http://localhost:${API_PORT:-8080}}
       PUBLIC_STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
       VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
-      CSP_IMG_ORIGINS: http://localhost:${S3_PORT:-9000} # product images from RustFS
+      CSP_IMG_ORIGINS: ${DEV_MEDIA_ORIGIN:-http://localhost:${S3_PORT:-9000}} # product images
     ports: ["127.0.0.1:${ADMIN_PORT:-5174}:5173"]
+    # Persist Vite's pre-bundled deps: rebuilding them on every container start
+    # changes their URLs, and an open tab then mixes two Svelte runtimes and
+    # fails to hydrate (blank page until a hard refresh).
+    volumes: ["admin_vite_cache:/repo/apps/admin/node_modules/.vite"]
     depends_on:
       api: { condition: service_healthy }
     develop:
@@ -194,7 +208,23 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
     restart: unless-stopped
-    depends_on: [storefront, admin, api]
+    depends_on: [storefront, admin, api, media]
+
+  # Read-only HTTPS front for images when using the tunnel (see docker/dev/media/Caddyfile).
+  media:
+    profiles: [tunnel]
+    image: caddy:2.10-alpine
+    volumes: ["./docker/dev/media/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    read_only: true
+    tmpfs: ["/data", "/config"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # The caddy binary carries the NET_BIND_SERVICE file capability; the
+    # kernel refuses to exec it unless that capability is still available.
+    cap_add: ["NET_BIND_SERVICE"]
+    restart: unless-stopped
+    depends_on:
+      rustfs: { condition: service_healthy }
 
   # Optional database UI: docker compose -f docker-compose.dev.yml --profile tools up -d
   mongo-express:
@@ -210,4 +240,6 @@ services:
 
 volumes:
   mongo_dev:
+  storefront_vite_cache:
+  admin_vite_cache:
   rustfs_dev:

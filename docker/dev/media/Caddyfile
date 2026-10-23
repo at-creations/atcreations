@@ -1,0 +1,33 @@
+# Read-only public front for the dev RustFS bucket, used when the dev stack is
+# published through the Cloudflare Tunnel (HTTPS pages cannot load images from
+# http://localhost). RustFS itself is never exposed: its dev credentials are
+# in the repo, so the S3 API must stay private.
+#
+# Only anonymous GET/HEAD of image objects under the public prefixes is
+# forwarded — no query strings (blocks S3 sub-resources like ?acl and signed
+# URLs), no Authorization header, no other paths or methods.
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	@image {
+		method GET HEAD
+		path_regexp ^/atcreations-dev/(products|categories|site)/[A-Za-z0-9._/-]+\.(jpg|jpeg|png|webp)$
+		expression {http.request.uri.query} == ""
+	}
+
+	handle @image {
+		reverse_proxy rustfs:9000 {
+			header_up Host rustfs:9000
+			header_up -Authorization
+			header_up -Cookie
+			header_down -Server
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

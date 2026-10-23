@@ -15,6 +15,10 @@ ingress:
     service: http://admin:5173
   - hostname: __API_HOST__
     service: http://api:8080
+  # Read-only image proxy (GET/HEAD of public image paths only); RustFS's
+  # S3 API itself is never routed.
+  - hostname: __MEDIA_HOST__
+    service: http://media:8080
   - service: http_status:404
 
 # Recommended: protect these hostnames with a Cloudflare Access application
