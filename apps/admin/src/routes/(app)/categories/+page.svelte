@@ -157,7 +157,7 @@
 								{category.name.en}
 							</a>
 							<p class="truncate text-sm text-zinc-500">
-								{#if category.name.vi}<span lang="vi">{category.name.vi}</span> ·
+								{#if category.name.vi}<span lang="vi">{category.name.vi}</span>&nbsp;·&ensp;
 								{/if}<span class="font-mono text-xs">{category.slug}</span>
 							</p>
 						</div>

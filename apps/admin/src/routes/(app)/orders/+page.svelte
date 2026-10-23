@@ -206,7 +206,7 @@
 					<EmptyState icon="inbox" title={m.dash_no_orders()} />
 				{/if}
 			{:else}
-				<div class="overflow-x-auto">
+				<div class="relative overflow-x-auto">
 					<table
 						class={[
 							'w-full min-w-[720px] text-left text-sm',

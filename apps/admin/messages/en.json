@@ -178,7 +178,16 @@
 	"img_order_saved": "Image order saved",
 	"img_order_failed": "Failed to save image order",
 	"img_max_exceeded": "A product can have at most {max} images.",
-	"img_failed_summary": "{count} image(s) could not be processed",
+	"img_failed_summary": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} image could not be processed",
+				"countPlural=other": "{count} images could not be processed"
+			}
+		}
+	],
 	"cat_add": "Add category",
 	"cat_none": "No categories yet",
 	"cat_load_failed": "Failed to fetch categories",
@@ -395,7 +404,16 @@
 	"signup_invite_only": "Accounts are by invitation only.",
 	"signup_go_to_signin": "Go to sign in",
 	"nav_view_store": "View store",
-	"nav_pending_count": "{count} pending orders",
+	"nav_pending_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} pending order",
+				"countPlural=other": "{count} pending orders"
+			}
+		}
+	],
 	"cmd_open": "Search",
 	"cmd_placeholder": "Search pages, products, orders",
 	"cmd_label": "Command menu",
@@ -414,7 +432,16 @@
 	"pf_discard": "Discard",
 	"od_progress": "Order progress",
 	"od_closed": "{status}",
-	"od_item_count": "{count} items",
+	"od_item_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} item",
+				"countPlural=other": "{count} items"
+			}
+		}
+	],
 	"products_view": "View",
 	"products_view_grid": "Grid",
 	"products_view_table": "List",
@@ -461,7 +488,16 @@
 	"dash_todo_drafts": "Drafts to finish",
 	"dash_all_done": "All done",
 	"dash_stock_ok": "Stock looks good",
-	"up_done_summary": "{count} image(s) ready",
+	"up_done_summary": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} image ready",
+				"countPlural=other": "{count} images ready"
+			}
+		}
+	],
 	"up_sending": "Uploading {percent}%",
 	"up_waiting_retry": "Waiting to retry…",
 	"up_queued": "Queued",
@@ -482,7 +518,16 @@
 	"cat_drag_hint": "Drag to change the order shown in the store",
 	"cat_order_saved": "Order saved",
 	"cat_order_failed": "Couldn't save the order",
-	"cat_product_count": "{count} products",
+	"cat_product_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} product",
+				"countPlural=other": "{count} products"
+			}
+		}
+	],
 	"cat_image": "Photo",
 	"cat_image_drop": "Drop a photo or click to upload",
 	"cat_image_after_save": "Add a photo after creating the category.",

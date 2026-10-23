@@ -326,7 +326,7 @@
 					/>
 				</Collapsible.Trigger>
 				<Collapsible.Content>
-					<div class="overflow-x-auto border-t border-zinc-100">
+					<div class="relative overflow-x-auto border-t border-zinc-100">
 						<table class="w-full text-left text-sm">
 							<thead class="bg-zinc-50/80">
 								<tr>

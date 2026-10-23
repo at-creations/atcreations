@@ -461,7 +461,7 @@
 		</ul>
 	{:else}
 		<div class={['overflow-hidden card transition-opacity', dimmed && 'opacity-60']}>
-			<div class="overflow-x-auto">
+			<div class="relative overflow-x-auto">
 				<table class="w-full min-w-[760px] text-left text-sm">
 					<thead class="border-b border-zinc-200 bg-zinc-50/80">
 						<tr>
@@ -509,7 +509,7 @@
 								</td>
 								<td class="td"><StatusBadge kind="product" value={product.status} /></td>
 								<td class="td"><StockLabel stock={product.stock} /></td>
-								<td class="td">
+								<td class="td whitespace-nowrap">
 									<PriceLabel
 										finalCents={product.finalPriceCents}
 										baseCents={product.priceCents}

@@ -89,7 +89,7 @@
 		{:else if entries.length === 0}
 			<p class="p-10 text-center text-zinc-500">{m.audit_none()}</p>
 		{:else}
-			<div class="overflow-x-auto">
+			<div class="relative overflow-x-auto">
 				<table
 					class={[
 						'w-full min-w-[720px] text-left text-sm',
