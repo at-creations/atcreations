@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Icon from '$lib/components/Icon.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import ProductForm from '$lib/components/products/ProductForm.svelte';
@@ -37,17 +38,18 @@
 			}}
 		>
 			{#snippet media()}
-				<section class="card">
-					<div class="card-header">
-						<h2 class="card-title">{m.img_title()}</h2>
-					</div>
+				<Card title={m.img_title()}>
 					<div
-						class="m-5 flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-zinc-200 px-6 py-10 text-center"
+						class="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 px-6 py-12 text-center"
 					>
-						<Icon name="image" size={24} class="text-zinc-300" />
+						<span
+							class="flex size-11 items-center justify-center rounded-full bg-zinc-100 text-zinc-400"
+						>
+							<Icon name="image" size={20} />
+						</span>
 						<p class="text-sm text-zinc-500">{m.pf_images_after_save()}</p>
 					</div>
-				</section>
+				</Card>
 			{/snippet}
 		</ProductForm>
 	{/if}

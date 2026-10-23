@@ -13,7 +13,16 @@
 	import { localized } from '$lib/i18n';
 	import { storefrontProductUrl } from '$lib/links';
 	import { m } from '$lib/paraglide/messages.js';
-	import { categoriesQuery, productDetailQuery } from '$lib/queries';
+	import Thumb from '$lib/components/ui/Thumb.svelte';
+	import { toastError } from '$lib/notify';
+	import { categoriesQuery, createDeleteProductMutation, productDetailQuery } from '$lib/queries';
+	import { confirmAction } from '$lib/state/confirm.svelte';
+	import { getAdminSession } from '$lib/state/session.svelte';
+	import { toast } from '$lib/state/toast.svelte';
+	import { goto } from '$app/navigation';
+
+	const session = getAdminSession();
+	const deleteProduct = createDeleteProductMutation();
 	const id = $derived(page.params.id ?? '');
 
 	// The cache holds the server's latest product (and `version`): saves and image operations
@@ -35,6 +44,24 @@
 		if (categoriesList.isError) void categoriesList.refetch();
 	}
 
+	async function remove() {
+		if (!product) return;
+		const ok = await confirmAction({
+			title: m.products_delete_title(),
+			message: m.products_delete_message({ name: localized(product.name) }),
+			confirmLabel: m.common_delete(),
+			danger: true
+		});
+		if (!ok) return;
+		try {
+			await deleteProduct.mutateAsync(product.id);
+			toast.success(m.products_deleted());
+			await goto(resolve('/products'));
+		} catch (error) {
+			toastError(error, m.products_delete_failed());
+		}
+	}
+
 	const siteUrl = $derived(
 		product?.status === 'published' ? storefrontProductUrl(product.slug) : null
 	);
@@ -53,8 +80,8 @@
 {:else if !product || !categoriesList.data}
 	<div class="space-y-6" role="status" aria-label={m.common_loading()}>
 		<div class="h-8 w-64 animate-pulse rounded-md bg-zinc-200"></div>
-		<div class="grid gap-6 lg:grid-cols-3">
-			<div class="h-96 animate-pulse card lg:col-span-2"></div>
+		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+			<div class="h-96 animate-pulse card"></div>
 			<div class="h-64 animate-pulse card"></div>
 		</div>
 	</div>
@@ -63,20 +90,34 @@
 		title={localized(product.name)}
 		back={{ href: resolve('/products'), label: m.nav_products() }}
 	>
+		{#snippet leading()}
+			<Thumb src={product!.images[0]?.url} class="hidden size-12 sm:flex" rounded="rounded-xl" />
+		{/snippet}
 		{#snippet meta()}
 			<StatusBadge kind="product" value={product!.status} />
 		{/snippet}
 		{#snippet actions()}
+			{#if session.can('products:delete')}
+				<button
+					type="button"
+					class="btn-ghost text-zinc-500 hover:bg-rose-50 hover:text-rose-600"
+					disabled={deleteProduct.isPending}
+					onclick={remove}
+				>
+					<Icon name="trash" size={16} />{m.common_delete()}
+				</button>
+			{/if}
 			{#if siteUrl}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external storefront URL -->
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- external storefront URL -->
 				<a class="btn-secondary" href={siteUrl} target="_blank" rel="noopener noreferrer">
 					<Icon name="external" size={16} />{m.products_view_on_site()}
 				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
 		{/snippet}
 	</PageHeader>
 	{#key product.id}
-		<ProductForm {product} categories={categoriesList.data}>
+		<ProductForm {product} categories={categoriesList.data} cover={product.images[0]?.url}>
 			{#snippet media()}
 				<ProductImages product={product!} />
 			{/snippet}

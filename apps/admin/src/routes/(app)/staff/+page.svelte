@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Icon from '$lib/components/Icon.svelte';
+	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Pagination from '$lib/components/Pagination.svelte';
@@ -74,13 +75,6 @@
 	}
 
 	let searchInput = $derived(filters.q);
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	function onSearch(value: string) {
-		searchInput = value;
-		clearTimeout(timer);
-		timer = setTimeout(() => navigate({ q: value.trim() }), 300);
-	}
-	$effect(() => () => clearTimeout(timer));
 
 	const isSelf = (member: StaffMember) => member.id === session.me?.id;
 
@@ -230,23 +224,12 @@
 
 	<section class="overflow-hidden card" aria-busy={staffQuery.isFetching}>
 		<div class="border-b border-zinc-200 p-3">
-			<div class="relative max-w-md">
-				<label for="{uid}-q" class="sr-only">{m.common_search()}</label>
-				<Icon
-					name="search"
-					size={16}
-					class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-400"
-				/>
-				<input
-					id="{uid}-q"
-					type="search"
-					class="input pl-9"
-					maxlength="100"
-					placeholder={m.staff_search_placeholder()}
-					value={searchInput}
-					oninput={(e) => onSearch(e.currentTarget.value)}
-				/>
-			</div>
+			<SearchInput
+				bind:value={searchInput}
+				class="max-w-md"
+				placeholder={m.staff_search_placeholder()}
+				onsearch={(q) => navigate({ q })}
+			/>
 		</div>
 		{#if showError}
 			<LoadState

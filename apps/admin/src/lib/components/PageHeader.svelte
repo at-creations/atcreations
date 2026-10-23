@@ -7,6 +7,7 @@
 		subtitle,
 		back,
 		meta,
+		leading,
 		actions
 	}: {
 		title: string;
@@ -15,6 +16,8 @@
 		back?: { href: string; label: string };
 		/** Inline badges next to the title (status, featured…). */
 		meta?: Snippet;
+		/** Before the title, e.g. a thumbnail. */
+		leading?: Snippet;
 		actions?: Snippet;
 	} = $props();
 </script>
@@ -37,6 +40,7 @@
 			</a>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/if}
+		{@render leading?.()}
 		<div class="min-w-0">
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<h1 class="truncate text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">

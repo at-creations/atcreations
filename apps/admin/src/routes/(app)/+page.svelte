@@ -4,8 +4,8 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import Thumb from '$lib/components/ui/Thumb.svelte';
 	import { formatDateTime, localized } from '$lib/i18n';
-	import { safeImageUrl } from '$lib/links';
 	import { m } from '$lib/paraglide/messages.js';
 	import { orderListQuery, pendingOrderCountQuery, productListQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
@@ -168,17 +168,17 @@
 		{:else}
 			<ul class="divide-y divide-zinc-100">
 				{#each stock.data.lowest as product (product.id)}
-					{@const cover = safeImageUrl(product.images[0]?.url)}
 					<li>
 						<a
 							href={resolve(`/products/${product.id}`)}
 							class="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-zinc-50"
 						>
-							{#if cover}
-								<img src={cover} alt="" class="size-8 rounded object-cover" loading="lazy" />
-							{:else}
-								<span class="size-8 rounded bg-zinc-100"></span>
-							{/if}
+							<Thumb
+								src={product.images[0]?.url}
+								class="size-8"
+								rounded="rounded-md"
+								iconSize={12}
+							/>
 							<span class="min-w-0 flex-1 truncate text-zinc-800">{localized(product.name)}</span>
 							<span
 								class={[

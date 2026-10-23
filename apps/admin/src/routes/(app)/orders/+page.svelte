@@ -6,7 +6,7 @@
 	import { page } from '$app/state';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import FilterTabs from '$lib/components/FilterTabs.svelte';
-	import Icon from '$lib/components/Icon.svelte';
+	import SearchInput from '$lib/components/ui/SearchInput.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Pagination from '$lib/components/Pagination.svelte';
@@ -77,13 +77,6 @@
 	}
 
 	let searchInput = $derived(filters.q);
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	function onSearch(value: string) {
-		searchInput = value;
-		clearTimeout(timer);
-		timer = setTimeout(() => navigate({ q: value.trim() }), 300);
-	}
-	$effect(() => () => clearTimeout(timer));
 
 	const itemCount = (order: Order) => order.items.reduce((n, i) => n + i.quantity, 0);
 
@@ -132,23 +125,12 @@
 			class="flex flex-col gap-2 p-3 lg:flex-row lg:items-center"
 			aria-label={m.common_filters()}
 		>
-			<div class="relative flex-1">
-				<label for="{uid}-q" class="sr-only">{m.common_search()}</label>
-				<Icon
-					name="search"
-					size={16}
-					class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-400"
-				/>
-				<input
-					id="{uid}-q"
-					type="search"
-					class="input pl-9"
-					maxlength="100"
-					placeholder={m.orders_search_placeholder()}
-					value={searchInput}
-					oninput={(e) => onSearch(e.currentTarget.value)}
-				/>
-			</div>
+			<SearchInput
+				bind:value={searchInput}
+				class="flex-1 lg:max-w-sm"
+				placeholder={m.orders_search_placeholder()}
+				onsearch={(q) => navigate({ q })}
+			/>
 			<div class="flex flex-wrap items-center gap-2">
 				<div
 					class="flex h-9 items-center rounded-lg border border-zinc-300 bg-white shadow-xs focus-within:border-brand-600 focus-within:ring-3 focus-within:ring-brand-600/15"
