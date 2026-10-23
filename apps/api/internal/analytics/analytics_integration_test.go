@@ -6,10 +6,12 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
@@ -119,5 +121,77 @@ func TestReportIntegration(t *testing.T) {
 	}
 	if len(rep.Countries) != 1 || rep.Countries[0] != (Count{"CA", 2}) {
 		t.Errorf("countries = %+v", rep.Countries)
+	}
+}
+
+func TestBufferedCountsAndKeyCap(t *testing.T) {
+	uri, redisURL := os.Getenv("MONGO_TEST_URI"), os.Getenv("REDIS_TEST_URL")
+	if uri == "" || redisURL == "" {
+		t.Skip("MONGO_TEST_URI and REDIS_TEST_URL are required")
+	}
+	ctx := context.Background()
+	client, db, err := mongox.Connect(ctx, uri, "atc_it_"+bson.NewObjectID().Hex(), 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.DB = 14 // not the database other packages' tests flush concurrently
+	rdb := redis.NewClient(opts)
+	t.Cleanup(func() {
+		_ = db.Drop(context.Background())
+		_ = client.Disconnect(context.Background())
+		_ = rdb.FlushDB(context.Background()).Err()
+		_ = rdb.Close()
+	})
+	_ = rdb.FlushDB(ctx).Err()
+	s := New(db, rdb, "pepper", Options{StorefrontURL: "https://shop.test"})
+	if err := s.EnsureIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	old := maxKeysPerDay[dimPath]
+	maxKeysPerDay[dimPath] = 3
+	t.Cleanup(func() { maxKeysPerDay[dimPath] = old })
+
+	browser := "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+	for i := range 5 { // 5 distinct paths, cap 3: two land in "other"
+		if err := s.RecordPageView(ctx, PageView{Path: fmt.Sprintf("/en/p%d", i), UserAgent: browser, IP: fmt.Sprintf("10.0.0.%d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RecordPageView(ctx, PageView{Path: "/en/p0", UserAgent: browser, IP: "10.0.0.0"}); err != nil {
+		t.Fatal(err)
+	}
+	s.RecordProductView(ctx, bson.NewObjectID())
+
+	// Nothing reaches MongoDB until the flush.
+	if n, _ := db.Collection("analytics_daily").CountDocuments(ctx, bson.M{}); n != 0 {
+		t.Fatalf("daily docs before flush = %d, want 0", n)
+	}
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := s.Report(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Totals.PageViews != 6 || rep.Totals.ProductViews != 1 || rep.Totals.Visitors != 5 {
+		t.Fatalf("totals = %+v, want 6 page views, 1 product view, 5 visitors", rep.Totals)
+	}
+	pages := map[string]int64{}
+	for _, c := range rep.Pages {
+		pages[c.Key] = c.Count
+	}
+	if len(pages) != 4 || pages[OtherKey] != 2 || pages["/en/p0"] != 2 {
+		t.Fatalf("pages = %v, want 3 capped paths plus other=2", pages)
+	}
+	// A second flush with nothing new changes nothing.
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := s.Report(ctx, 1); again.Totals.PageViews != 6 {
+		t.Fatalf("page views after empty flush = %d", again.Totals.PageViews)
 	}
 }

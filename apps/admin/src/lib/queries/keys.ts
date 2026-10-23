@@ -5,6 +5,7 @@ type QueryOf<P extends keyof paths> = paths[P] extends { get: { parameters: { qu
 	: never;
 
 export type ProductListParams = QueryOf<'/v1/admin/products'>;
+export type ProductStatsParams = QueryOf<'/v1/admin/products/stats'>;
 export type OrderListParams = QueryOf<'/v1/admin/orders'>;
 export type StaffListParams = QueryOf<'/v1/admin/staff'>;
 export type AuditListParams = QueryOf<'/v1/admin/audit'>;
@@ -36,6 +37,9 @@ export const keys = {
 		lists: () => ['products', 'list'] as const,
 		list: (params: ProductListParams = {}) =>
 			['products', 'list', normalizeParams(params)] as const,
+		// Under "list" so everything that refreshes product lists refreshes the counts too.
+		stats: (params: ProductStatsParams = {}) =>
+			['products', 'list', 'stats', normalizeParams(params)] as const,
 		details: () => ['products', 'detail'] as const,
 		detail: (id: string) => ['products', 'detail', id] as const
 	},

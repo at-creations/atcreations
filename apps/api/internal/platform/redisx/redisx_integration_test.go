@@ -45,7 +45,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 func TestCacheHitMissAndInvalidate(t *testing.T) {
 	c := NewCache(connect(t))
 	var calls atomic.Int32
-	h := c.Middleware(NSCatalog, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := c.Middleware(NSCatalog, time.Minute, "a", "b", "fail")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.URL.Query().Get("fail") != "" {
 			http.Error(w, "boom", http.StatusInternalServerError)
@@ -74,6 +74,41 @@ func TestCacheHitMissAndInvalidate(t *testing.T) {
 	get(t, h, "/v1/products?fail=1")
 	if rec := get(t, h, "/v1/products?fail=1"); rec.Code != http.StatusInternalServerError || calls.Load() != 4 {
 		t.Fatalf("error response was cached (calls=%d)", calls.Load())
+	}
+}
+
+func TestCacheBypassesUnknownParamsAndSharesMisses(t *testing.T) {
+	c := NewCache(connect(t))
+	var calls atomic.Int32
+	release := make(chan struct{})
+	h := c.Middleware(NSCatalog, time.Minute, "page")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Query().Get("page") == "slow" {
+			<-release
+		}
+		_, _ = w.Write([]byte(`{"data":1}`))
+	}))
+	// Unknown parameters never create cache entries.
+	for i := range 3 {
+		if rec := get(t, h, fmt.Sprintf("/v1/products?junk=%d", i)); rec.Header().Get("X-Cache") != "BYPASS" {
+			t.Fatalf("junk param: X-Cache = %q", rec.Header().Get("X-Cache"))
+		}
+	}
+	calls.Store(0)
+	// Concurrent misses for one key run the handler once.
+	done := make(chan *httptest.ResponseRecorder, 5)
+	for range 5 {
+		go func() { done <- get(t, h, "/v1/products?page=slow") }()
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	for range 5 {
+		if rec := <-done; rec.Code != http.StatusOK || rec.Body.String() != `{"data":1}` {
+			t.Fatalf("waiter got %d %q", rec.Code, rec.Body.String())
+		}
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("handler ran %d times for concurrent misses, want 1", n)
 	}
 }
 

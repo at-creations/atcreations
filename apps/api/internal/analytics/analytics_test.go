@@ -103,16 +103,6 @@ func TestPeriodsUseStoreDays(t *testing.T) {
 	}
 }
 
-func TestTopN(t *testing.T) {
-	got := topN([]Count{{"b", 2}, {"a", 2}, {"c", 5}, {"d", 1}}, 3)
-	want := []Count{{"c", 5}, {"a", 2}, {"b", 2}}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("topN = %v, want %v", got, want)
-		}
-	}
-}
-
 // nil0 returns a database handle that is never used (the client connects lazily).
 func nil0() *mongo.Database {
 	client, err := mongo.Connect(options.Client().ApplyURI("mongodb://127.0.0.1:1"))

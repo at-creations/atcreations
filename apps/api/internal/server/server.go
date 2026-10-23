@@ -127,11 +127,14 @@ func New(d Deps) http.Handler {
 		// ---- Public catalogue ----
 		r.Group(func(r chi.Router) {
 			r.Use(httpx.PublicCache(60 * time.Second))
-			catalogCache := d.Cache.Middleware(redisx.NSCatalog, 5*time.Minute)
-			r.With(catalogCache).Get("/categories", w(c.HandlePublicCategories))
-			r.With(catalogCache).Get("/categories/{slug}", w(c.HandlePublicCategory))
-			r.With(catalogCache).Get("/products", w(c.HandlePublicProducts))
-			r.With(catalogCache).Get("/products/{slug}", w(c.HandlePublicProduct))
+			// Cache keys use only the parameters each endpoint reads (others bypass the cache).
+			catalogCache := func(params ...string) func(http.Handler) http.Handler {
+				return d.Cache.Middleware(redisx.NSCatalog, 5*time.Minute, params...)
+			}
+			r.With(catalogCache()).Get("/categories", w(c.HandlePublicCategories))
+			r.With(catalogCache()).Get("/categories/{slug}", w(c.HandlePublicCategory))
+			r.With(catalogCache("q", "featured", "inStock", "minPrice", "maxPrice", "sort", "locale", "page", "pageSize", "category")).Get("/products", w(c.HandlePublicProducts))
+			r.With(catalogCache()).Get("/products/{slug}", w(c.HandlePublicProduct))
 			r.With(d.Cache.Middleware(redisx.NSStore, time.Hour)).Get("/store-info", w(d.StoreInfo.HandleGet))
 		})
 		r.With(limit("views", 30, time.Minute)).Post("/products/{id}/views", w(c.HandleRecordView))
@@ -148,6 +151,7 @@ func New(d Deps) http.Handler {
 			r.Get("/me", w(handleMe))
 
 			r.Get("/products", w(c.HandleAdminProducts))
+			r.Get("/products/stats", w(c.HandleAdminProductStats))
 			r.Get("/products/{id}", w(c.HandleAdminProduct))
 			r.With(can(auth.ProductsWrite)).Post("/products", w(c.HandleCreateProduct))
 			r.With(can(auth.ProductsWrite)).Put("/products/{id}", w(c.HandleUpdateProduct))
@@ -172,7 +176,9 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.StoreWrite)).Put("/store-info", w(d.StoreInfo.HandlePut))
 
 			// Revenue figures: visible to whoever may read orders.
-			r.With(can(auth.OrdersRead), limit("analytics", 60, time.Minute)).Get("/analytics", w(d.Analytics.Report))
+			// The same for every staff member: built at most once a minute however many tabs poll it.
+			r.With(can(auth.OrdersRead), limit("analytics", 60, time.Minute), d.Cache.Middleware(redisx.NSAnalytics, time.Minute, "days")).
+				Get("/analytics", w(d.Analytics.Report))
 
 			r.With(can(auth.OrdersRead)).Get("/orders", w(o.List))
 			r.With(can(auth.OrdersRead)).Get("/orders/{id}", w(o.Get))

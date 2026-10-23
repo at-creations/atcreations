@@ -2,7 +2,6 @@ package analytics
 
 import (
 	"context"
-	"sort"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -98,8 +97,7 @@ func (s *Service) Report(ctx context.Context, days int) (*Report, error) {
 		salesByDay              map[string]Day
 		trafficByDay            map[string]Day
 		curTraffic, prevTraffic Totals
-		productViews            map[string]int64
-		dimCounts               map[string][]Count
+		topViewed               []Count
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() (err error) { salesByDay, rep.Totals, err = s.sales(gctx, cur, true); return })
@@ -108,7 +106,11 @@ func (s *Service) Report(ctx context.Context, days int) (*Report, error) {
 	g.Go(func() (err error) { _, prevTraffic, err = s.traffic(gctx, prev); return })
 	g.Go(func() (err error) { rep.OrdersByStatus, err = s.statusBreakdown(gctx, cur); return })
 	g.Go(func() (err error) { rep.TopSelling, err = s.topSelling(gctx, cur); return })
-	g.Go(func() (err error) { productViews, dimCounts, err = s.dimensions(gctx, cur); return })
+	g.Go(func() (err error) { rep.Pages, err = s.dimTop(gctx, cur, dimPath, topCounts); return })
+	g.Go(func() (err error) { rep.Referrers, err = s.dimTop(gctx, cur, dimRef, topCounts); return })
+	g.Go(func() (err error) { rep.Devices, err = s.dimTop(gctx, cur, dimDevice, topCounts); return })
+	g.Go(func() (err error) { rep.Countries, err = s.dimTop(gctx, cur, dimCountry, topCounts); return })
+	g.Go(func() (err error) { topViewed, err = s.dimTop(gctx, cur, dimProduct, topProducts); return })
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -128,17 +130,24 @@ func (s *Service) Report(ctx context.Context, days int) (*Report, error) {
 		rep.Daily = append(rep.Daily, day)
 	}
 
-	for i := range rep.TopSelling {
-		rep.TopSelling[i].Views = productViews[rep.TopSelling[i].ProductID]
+	sellingIDs := make([]string, len(rep.TopSelling))
+	for i, p := range rep.TopSelling {
+		sellingIDs[i] = p.ProductID
 	}
-	var err error
-	if rep.TopViewed, err = s.topViewed(ctx, productViews); err != nil {
+	views, err := s.productViews(ctx, cur, sellingIDs)
+	if err != nil {
 		return nil, err
 	}
-	rep.Pages = nonNil(dimCounts[dimPath])
-	rep.Referrers = nonNil(dimCounts[dimRef])
-	rep.Devices = nonNil(dimCounts[dimDevice])
-	rep.Countries = nonNil(dimCounts[dimCountry])
+	for i := range rep.TopSelling {
+		rep.TopSelling[i].Views = views[rep.TopSelling[i].ProductID]
+	}
+	if rep.TopViewed, err = s.topViewed(ctx, topViewed); err != nil {
+		return nil, err
+	}
+	rep.Pages = nonNil(rep.Pages)
+	rep.Referrers = nonNil(rep.Referrers)
+	rep.Devices = nonNil(rep.Devices)
+	rep.Countries = nonNil(rep.Countries)
 	rep.OrdersByStatus = nonNil(rep.OrdersByStatus)
 	rep.TopSelling = nonNil(rep.TopSelling)
 	return rep, nil
@@ -274,51 +283,54 @@ func (s *Service) topSelling(ctx context.Context, p period) ([]ProductStat, erro
 	return out, nil
 }
 
-// dimensions sums the per-day counters of the period: product views by product id, and the
-// top values of every other dimension.
-func (s *Service) dimensions(ctx context.Context, p period) (map[string]int64, map[string][]Count, error) {
-	cur, err := s.dims.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$match", Value: bson.M{"date": bson.M{"$gte": p.start.UTC(), "$lt": p.end.UTC()}}}},
-		{{Key: "$group", Value: bson.M{
-			"_id":   bson.M{"dim": "$dim", "key": "$key"},
-			"count": bson.M{"$sum": "$count"},
-		}}},
+// dimTop returns the n largest values of one dimension over the period. The {dim, date} index
+// narrows the scan to that dimension's rows, and only n rows leave the database.
+func (s *Service) dimTop(ctx context.Context, p period, dim string, n int) ([]Count, error) {
+	return s.dimCounts(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"dim": dim, "date": bson.M{"$gte": p.start.UTC(), "$lt": p.end.UTC()}}}},
+		{{Key: "$group", Value: bson.M{"_id": "$key", "count": bson.M{"$sum": "$count"}}}},
+		{{Key: "$sort", Value: bson.D{{Key: "count", Value: -1}, {Key: "_id", Value: 1}}}},
+		{{Key: "$limit", Value: n}},
 	})
+}
+
+// productViews returns the period's view counts of the given products.
+func (s *Service) productViews(ctx context.Context, p period, ids []string) (map[string]int64, error) {
+	out := map[string]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.dimCounts(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"dim": dimProduct, "key": bson.M{"$in": ids}, "date": bson.M{"$gte": p.start.UTC(), "$lt": p.end.UTC()}}}},
+		{{Key: "$group", Value: bson.M{"_id": "$key", "count": bson.M{"$sum": "$count"}}}},
+	})
+	for _, r := range rows {
+		out[r.Key] = r.Count
+	}
+	return out, err
+}
+
+func (s *Service) dimCounts(ctx context.Context, pipeline mongo.Pipeline) ([]Count, error) {
+	cur, err := s.dims.Aggregate(ctx, pipeline)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var rows []struct {
-		ID struct {
-			Dim string `bson:"dim"`
-			Key string `bson:"key"`
-		} `bson:"_id"`
-		Count int64 `bson:"count"`
+		Key   string `bson:"_id"`
+		Count int64  `bson:"count"`
 	}
 	if err := cur.All(ctx, &rows); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	views := map[string]int64{}
-	counts := map[string][]Count{}
-	for _, r := range rows {
-		if r.ID.Dim == dimProduct {
-			views[r.ID.Key] = r.Count
-			continue
-		}
-		counts[r.ID.Dim] = append(counts[r.ID.Dim], Count{Key: r.ID.Key, Count: r.Count})
+	out := make([]Count, len(rows))
+	for i, r := range rows {
+		out[i] = Count(r)
 	}
-	for dim, list := range counts {
-		counts[dim] = topN(list, topCounts)
-	}
-	return views, counts, nil
+	return out, nil
 }
 
 // topViewed resolves the most viewed product ids to names and cover images.
-func (s *Service) topViewed(ctx context.Context, views map[string]int64) ([]ProductStat, error) {
-	list := make([]Count, 0, len(views))
-	for id, n := range views {
-		list = append(list, Count{Key: id, Count: n})
-	}
-	list = topN(list, topProducts)
+func (s *Service) topViewed(ctx context.Context, list []Count) ([]ProductStat, error) {
 	if len(list) == 0 {
 		return []ProductStat{}, nil
 	}
@@ -359,19 +371,6 @@ func (s *Service) topViewed(ctx context.Context, views map[string]int64) ([]Prod
 		out = append(out, stat)
 	}
 	return out, nil
-}
-
-func topN(list []Count, n int) []Count {
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Count != list[j].Count {
-			return list[i].Count > list[j].Count
-		}
-		return list[i].Key < list[j].Key
-	})
-	if len(list) > n {
-		list = list[:n]
-	}
-	return list
 }
 
 func nonNil[T any](s []T) []T {

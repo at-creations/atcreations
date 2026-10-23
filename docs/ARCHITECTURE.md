@@ -83,15 +83,24 @@ Indexes are created idempotently at startup (`EnsureIndexes`).
 
 ## Search
 
-The old service generated Gemini embeddings but never queried them; search was unescaped regex. Now each product stores an accent-folded `search` field (EN + VI name/description). Queries are folded the same way, split into terms (AND semantics) and each term is regex-quoted. This is fast enough for a catalogue of thousands of items; if it grows, swap in a `$text` index or Atlas-compatible search without changing the API.
+The old service generated Gemini embeddings but never queried them; search was unescaped regex. Now each product stores `searchWords`: the distinct accent-folded words of its EN + VI name and description (names first, at most 256). Queries are folded and split the same way, and every term must **start** a word (AND semantics): `{searchWords: {$all: [/^term/…]}}`. Anchored, case-sensitive prefixes are range scans on the multikey index `{searchWords, status}`, so search stays index-backed as the catalogue grows (mid-word matches like "ote" → "tote" are not found). Orders work the same way over their number, customer name and email (`{searchWords, createdAt}`). Documents saved before this were backfilled once at startup (`app_migrations`).
+
+## Counting and paging at scale
+
+- **List totals** (`meta.total`): an unfiltered list uses the collection's metadata (constant time); a filtered count stops at 10,000 (`meta.totalCapped: true`, shown as "10,000+"). Lists page at most 10,000 rows deep (`page × pageSize`), so no request scans or skips millions of documents; narrower filters reach older results.
+- **Sorting**: every product sort (incl. category pages) and the order total sorts have an index ending in the sort keys and the `_id` tie-breaker, so a page reads exactly its rows from the index (no in-memory sort).
+- **Category product counts** are stored on each category (`productCount`) and adjusted with `$inc` when a product is created, moved or deleted. The `category-counts` job recounts them (index-only) to repair drift; migrations recount at the end.
+- **Admin counters**: `GET /v1/admin/products/stats` returns per-status counts and stock alerts for the list's filters in one request (capped like totals).
 
 ## Scheduled jobs
 
 | Job | Interval | What |
 |---|---|---|
-| `recent-views` | 1h | Recomputes 7-day view counts (drives "relevance" sort) |
+| `recent-views` | 1h | Recomputes 7-day view counts (drives "relevance" sort): index-only count, run-stamped updates, and a reset of no-longer-viewed products through a partial index |
+| `analytics-flush` | 30s | Moves page/product view counters buffered in Redis to MongoDB in one bulk write |
+| `category-counts` | 6h | Repairs drift in the stored category product counts |
 | `upload-sweep` | 1h | Deletes originals in `uploads/` older than 24h that no queued or processing job needs |
-| `media-sweep` | 24h | Deletes bucket objects under `products/` and `categories/` that no product, category or order references and are older than 24h (protects in-flight uploads and images shown on past orders) |
+| `media-sweep` | 24h | Deletes bucket objects under `products/` and `categories/` that no product, category or order references and are older than 24h (protects in-flight uploads and images shown on past orders). Checks candidates 1,000 at a time with indexed lookups, so memory stays flat |
 
 ## Orders
 
@@ -129,13 +138,15 @@ First-party and cookieless; no third-party script.
 
 - **Collection.** The storefront posts `POST /v1/events/pageview` (`{path, referrer}`) after every navigation; product pages keep posting to `/v1/products/{id}/views`, which now also feeds the daily rollup. The API drops bots, invalid paths and requests with `DNT: 1` or `Sec-GPC: 1` (the storefront also checks them before sending). It stores only counters: the path, the referrer **host**, a device class derived from the user agent, and the country from Cloudflare's `CF-IPCountry` (trusted only from `TRUSTED_PROXIES`).
 - **Unique visitors.** HMAC(pepper, day + IP + user agent) is added to a Redis HyperLogLog (`analytics:uv:<day>`, 48 h TTL); only the day's count is written to MongoDB. Without Redis, visitors are not counted. A visitor seen on two days counts on both.
-- **Report.** `GET /v1/admin/analytics?days=7|30|90` (`orders:read`) returns revenue and orders (excluding cancelled/refunded) per day, totals plus the previous period for comparison, orders by status, top-selling and most-viewed products, and top pages, sources, devices and countries. Days follow `ANALYTICS_TIMEZONE` (default `America/Vancouver`).
+- **Write path.** Each view is one Redis script call that increments a per-day hash (`analytics:buf:<day>`); the `analytics-flush` job moves it to `analytics_daily` / `analytics_dims` every 30 s, so views never contend on the same MongoDB documents. If Redis is unavailable, views are written to MongoDB directly. A crash between the MongoDB write and the cleanup can count one batch twice.
+- **Bounded dimensions.** New values per day are capped (paths 2,000, referrers 500, countries 300); further values count as `other`, so made-up paths or referrers cannot create unbounded rows.
+- **Report.** `GET /v1/admin/analytics?days=7|30|90` (`orders:read`) returns revenue and orders (excluding cancelled/refunded) per day, totals plus the previous period for comparison, orders by status, top-selling and most-viewed products, and top pages, sources, devices and countries. Days follow `ANALYTICS_TIMEZONE` (default `America/Vancouver`). Each dimension's top values come from one `{dim, date}`-indexed pipeline that returns only those rows; order figures read the covering index `{createdAt, status, totalCents}`; the whole report is cached in Redis for 60 s.
 
 ## Caching
 
 | Layer | What | Invalidation |
 |---|---|---|
-| Redis response cache (API) | `GET /v1/categories*`, `/v1/products*` (5 min), `/v1/store-info` (1 h) | Every catalogue write (products, categories, images, stock changes from orders, the recent-views job) bumps the `catalog` namespace version; store-info writes bump `store`. Old entries are orphaned instantly and expire by TTL. Responses carry `X-Cache: HIT/MISS`. |
+| Redis response cache (API) | `GET /v1/categories*`, `/v1/products*` (5 min), `/v1/store-info` (1 h), `/v1/admin/analytics` (1 min) | Every catalogue write (products, categories, images, stock changes from orders, the recent-views job) bumps the `catalog` namespace version; store-info writes bump `store`. Old entries are orphaned instantly and expire by TTL. Keys use only the parameters an endpoint reads (requests with others bypass the cache: `X-Cache: BYPASS`), and concurrent misses for one key run the handler once per instance (`X-Cache: SHARED`). |
 | HTTP `Cache-Control` | Public catalogue responses `max-age=60` | Time-based |
 | TanStack Query (admin) | Every admin API read, keyed by a typed query-key factory | Cached data is shown at once and revalidated on mount, focus and reconnect; orders poll every 30 s and the analytics report every 60 s while visible; mutations invalidate or set the affected queries and are broadcast to the admin's other tabs; data is cleared on sign-out |
 

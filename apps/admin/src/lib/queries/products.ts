@@ -6,13 +6,23 @@ import {
 	type QueryClient
 } from '@tanstack/svelte-query';
 import { api, unwrap } from '$lib/api';
-import { keys, type ProductListParams } from './keys';
+import { keys, type ProductListParams, type ProductStatsParams } from './keys';
 
 export function productListQuery(params: ProductListParams) {
 	return queryOptions({
 		queryKey: keys.products.list(params),
 		queryFn: ({ signal }) =>
 			unwrap(api().GET('/v1/admin/products', { params: { query: params }, signal }))
+	});
+}
+
+/** Counts per status and stock alerts for a set of filters, in one request. */
+export function productStatsQuery(params: ProductStatsParams = {}) {
+	return queryOptions({
+		queryKey: keys.products.stats(params),
+		queryFn: async ({ signal }) =>
+			(await unwrap(api().GET('/v1/admin/products/stats', { params: { query: params }, signal })))
+				.data
 	});
 }
 

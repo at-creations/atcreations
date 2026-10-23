@@ -7,6 +7,9 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
 )
 
 // Category product counts are stored on each category (productCount) and adjusted with $inc
@@ -87,4 +90,63 @@ func (s *Service) RecountCategoryProducts(ctx context.Context) error {
 	}
 	slog.InfoContext(ctx, "category product counts corrected", "categories", len(models))
 	return nil
+}
+
+// LowStock is the stock level from which a published product counts as running low.
+const LowStock = 5
+
+// ProductStats is what the admin shows about a set of products. Counts are capped like list
+// totals (Capped: at least one count stopped at httpx.MaxListDepth).
+type ProductStats struct {
+	All        int64 `json:"all"`
+	Draft      int64 `json:"draft"`
+	Published  int64 `json:"published"`
+	Archived   int64 `json:"archived"`
+	OutOfStock int64 `json:"outOfStock"` // published, stock 0
+	LowStock   int64 `json:"lowStock"`   // published, stock 1..LowStock
+	Capped     bool  `json:"capped"`
+}
+
+// ProductStats counts the products matching q (its status is ignored) per status, and the
+// published ones that are out of or low on stock. Each count is index-backed and capped.
+func (s *Service) ProductStats(ctx context.Context, q ProductQuery) (ProductStats, error) {
+	q.Status, q.Published, q.InStock = "", false, nil
+	base := q.filter()
+	with := func(extra bson.M) bson.M {
+		f := bson.M{}
+		for k, v := range base {
+			f[k] = v
+		}
+		for k, v := range extra {
+			f[k] = v
+		}
+		return f
+	}
+	var st ProductStats
+	counts := []struct {
+		dst    *int64
+		filter bson.M
+	}{
+		{&st.All, base},
+		{&st.Draft, with(bson.M{"status": StatusDraft})},
+		{&st.Published, with(bson.M{"status": StatusPublished})},
+		{&st.Archived, with(bson.M{"status": StatusArchived})},
+		{&st.OutOfStock, with(bson.M{"status": StatusPublished, "stock": 0})},
+		{&st.LowStock, with(bson.M{"status": StatusPublished, "stock": bson.M{"$gte": 1, "$lte": LowStock}})},
+	}
+	capped := make([]bool, len(counts))
+	g, gctx := errgroup.WithContext(ctx)
+	for i, c := range counts {
+		g.Go(func() (err error) {
+			*c.dst, capped[i], err = mongox.CountForPage(gctx, s.products, c.filter)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return ProductStats{}, err
+	}
+	for _, c := range capped {
+		st.Capped = st.Capped || c
+	}
+	return st, nil
 }

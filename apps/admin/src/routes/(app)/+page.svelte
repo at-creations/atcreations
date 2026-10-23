@@ -17,7 +17,8 @@
 		analyticsQuery,
 		orderListQuery,
 		pendingOrderCountQuery,
-		productListQuery
+		productListQuery,
+		productStatsQuery
 	} from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { change } from '$lib/utils/chart';
@@ -28,10 +29,6 @@
 
 	/** The headline period for sales figures. */
 	const DAYS = 7;
-	/** Stock scan size: enough to count out-of-stock items for a small catalogue. */
-	const STOCK_SCAN = 50;
-
-	const total = (res: { meta: { total: number } }) => res.meta.total;
 
 	const report = createQuery(() => ({ ...analyticsQuery(DAYS), enabled: canOrders }));
 	const pendingOrders = createQuery(() => ({ ...pendingOrderCountQuery(), enabled: canOrders }));
@@ -40,24 +37,12 @@
 		select: (res) => res.data,
 		enabled: canOrders
 	}));
-	const totalProducts = createQuery(() => ({
-		...productListQuery({ pageSize: 1 }),
-		select: total
-	}));
-	const published = createQuery(() => ({
-		...productListQuery({ pageSize: 1, status: 'published' }),
-		select: total
-	}));
-	const drafts = createQuery(() => ({
-		...productListQuery({ pageSize: 1, status: 'draft' }),
-		select: total
-	}));
-	const stock = createQuery(() => ({
-		...productListQuery({ sort: 'stock_asc', pageSize: STOCK_SCAN }),
-		select: (res) => ({
-			outOfStock: res.data.filter((p) => p.stock === 0).length,
-			low: res.data.filter((p) => p.stock <= LOW_STOCK).slice(0, 6)
-		})
+	// Counts and stock alerts in one index-backed request.
+	const stats = createQuery(() => productStatsQuery());
+	// The lowest-stock published products (an index range, not a scan).
+	const lowStock = createQuery(() => ({
+		...productListQuery({ status: 'published', sort: 'stock_asc', pageSize: 6 }),
+		select: (res) => res.data.filter((p) => p.stock <= LOW_STOCK)
 	}));
 	const newest = createQuery(() => ({
 		...productListQuery({ sort: 'newest', pageSize: 4 }),
@@ -112,29 +97,27 @@
 				count: pendingOrders.data ?? 0,
 				href: `${resolve('/orders')}?status=pending`
 			});
-		if ((stock.data?.outOfStock ?? 0) > 0)
+		if ((stats.data?.outOfStock ?? 0) > 0)
 			out.push({
 				key: 'stock',
 				icon: 'alert',
 				tone: 'bg-rose-100 text-rose-700',
 				label: m.dash_out_of_stock(),
-				count: stock.data?.outOfStock ?? 0,
-				href: `${resolve('/products')}?sort=stock_asc`
+				count: stats.data?.outOfStock ?? 0,
+				href: `${resolve('/products')}?status=published&sort=stock_asc`
 			});
-		if ((drafts.data ?? 0) > 0)
+		if ((stats.data?.draft ?? 0) > 0)
 			out.push({
 				key: 'drafts',
 				icon: 'edit',
 				tone: 'bg-brand-100 text-brand-700',
 				label: m.dash_todo_drafts(),
-				count: drafts.data ?? 0,
+				count: stats.data?.draft ?? 0,
 				href: `${resolve('/products')}?status=draft`
 			});
 		return out;
 	});
-	const todosLoading = $derived(
-		stock.isPending || drafts.isPending || (canOrders && pendingOrders.isPending)
-	);
+	const todosLoading = $derived(stats.isPending || (canOrders && pendingOrders.isPending));
 </script>
 
 <PageHeader title={m.nav_dashboard()} subtitle={today}>
@@ -183,24 +166,24 @@
 	{:else}
 		<StatTile
 			label={m.dash_products()}
-			value={totalProducts.data?.toLocaleString(intl) ?? ''}
-			loading={totalProducts.isPending}
+			value={stats.data?.all.toLocaleString(intl) ?? ''}
+			loading={stats.isPending}
 			href={resolve('/products')}
 			icon="box"
 			iconTone="bg-sky-100 text-sky-700"
 		/>
 		<StatTile
 			label={m.dash_draft()}
-			value={drafts.data?.toLocaleString(intl) ?? ''}
-			loading={drafts.isPending}
+			value={stats.data?.draft.toLocaleString(intl) ?? ''}
+			loading={stats.isPending}
 			href={`${resolve('/products')}?status=draft`}
 			icon="edit"
 			iconTone="bg-brand-100 text-brand-700"
 		/>
 		<StatTile
 			label={m.dash_out_of_stock()}
-			value={stock.data?.outOfStock.toLocaleString(intl) ?? ''}
-			loading={stock.isPending}
+			value={stats.data?.outOfStock.toLocaleString(intl) ?? ''}
+			loading={stats.isPending}
 			href={`${resolve('/products')}?sort=stock_asc`}
 			icon="alert"
 			iconTone="bg-rose-100 text-rose-700"
@@ -208,8 +191,8 @@
 	{/if}
 	<StatTile
 		label={m.dash_live_products()}
-		value={published.data?.toLocaleString(intl) ?? ''}
-		loading={published.isPending}
+		value={stats.data?.published.toLocaleString(intl) ?? ''}
+		loading={stats.isPending}
 		href={`${resolve('/products')}?status=published`}
 		icon="check"
 		iconTone="bg-emerald-100 text-emerald-700"
@@ -369,19 +352,19 @@
 			>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/snippet}
-		{#if stock.isPending}
+		{#if lowStock.isPending}
 			<div class="space-y-2 p-4" role="status" aria-label={m.common_loading()}>
 				{#each [0, 1, 2, 3] as i (i)}
 					<div class="h-10 animate-pulse rounded-lg bg-zinc-50"></div>
 				{/each}
 			</div>
-		{:else if stock.isError}
+		{:else if lowStock.isError}
 			<p class="p-5 text-sm text-red-600">{m.products_load_failed()}</p>
-		{:else if stock.data.low.length === 0}
+		{:else if lowStock.data.length === 0}
 			<EmptyState icon="check" title={m.dash_stock_ok()} />
 		{:else}
 			<ul class="divide-y divide-zinc-100">
-				{#each stock.data.low as product (product.id)}
+				{#each lowStock.data as product (product.id)}
 					<li>
 						<a
 							href={resolve(`/products/${product.id}`)}

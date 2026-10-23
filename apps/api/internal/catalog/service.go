@@ -81,7 +81,12 @@ func (s *Service) EnsureIndexes(ctx context.Context) error {
 		mongox.Index{Keys: withPrefix(inCategory, relevance)},
 		mongox.Index{Keys: withPrefix(inCategory, newest)},
 		mongox.Index{Keys: bson.D{{Key: "stock", Value: 1}, {Key: "_id", Value: 1}}},
+		// Stock alerts and the low-stock list of published products.
+		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "stock", Value: 1}, {Key: "_id", Value: 1}}},
 		mongox.Index{Keys: bson.D{{Key: "searchWords", Value: 1}, {Key: "status", Value: 1}}},
+		mongox.Index{Keys: bson.D{{Key: "images.key", Value: 1}}}, // media sweep
+		// Products with recent views only: the hourly reset finds them without a full scan.
+		mongox.Index{Keys: bson.D{{Key: "recentViews", Value: 1}}, Partial: bson.M{"recentViews": bson.M{"$gt": 0}}, Name: "recentViews_positive"},
 	)
 	if err != nil {
 		return err
@@ -106,6 +111,7 @@ func (s *Service) EnsureIndexes(ctx context.Context) error {
 	}
 	return mongox.EnsureIndexes(ctx, s.views,
 		mongox.Index{Keys: bson.D{{Key: "productId", Value: 1}, {Key: "at", Value: -1}}},
+		mongox.Index{Keys: bson.D{{Key: "at", Value: 1}, {Key: "productId", Value: 1}}}, // covers the weekly view count
 		mongox.Index{Keys: bson.D{{Key: "at", Value: 1}}, TTL: mongox.Int32(7 * 24 * 3600), Name: "at_ttl"},
 	)
 }
@@ -643,6 +649,7 @@ func (s *Service) RecordView(ctx context.Context, id bson.ObjectID, ip, userAgen
 // RefreshRecentViews recomputes the 7-day view counter used for "trending" ordering.
 func (s *Service) RefreshRecentViews(ctx context.Context) error {
 	since := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	// Index-only: {at, productId} covers the match and the group.
 	cur, err := s.views.Aggregate(ctx, mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"at": bson.M{"$gte": since}}}},
 		{{Key: "$group", Value: bson.M{"_id": "$productId", "n": bson.M{"$sum": 1}}}},
@@ -650,23 +657,45 @@ func (s *Service) RefreshRecentViews(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var rows []struct {
-		ID bson.ObjectID `bson:"_id"`
-		N  int64         `bson:"n"`
-	}
-	if err := cur.All(ctx, &rows); err != nil {
+	// Every product updated in this run gets the run's stamp; the others are reset below
+	// without listing them (a $nin of every viewed id would not scale).
+	gen := time.Now().UnixNano()
+	const batch = 1000
+	models := make([]mongo.WriteModel, 0, batch)
+	flush := func() error {
+		if len(models) == 0 {
+			return nil
+		}
+		_, err := s.products.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false))
+		models = models[:0]
 		return err
 	}
-	seen := make([]bson.ObjectID, 0, len(rows))
-	models := make([]mongo.WriteModel, 0, len(rows)+1)
-	for _, r := range rows {
-		seen = append(seen, r.ID)
-		models = append(models, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": r.ID}).SetUpdate(bson.M{"$set": bson.M{"recentViews": r.N}}))
+	for cur.Next(ctx) {
+		var r struct {
+			ID bson.ObjectID `bson:"_id"`
+			N  int64         `bson:"n"`
+		}
+		if err := cur.Decode(&r); err != nil {
+			return err
+		}
+		models = append(models, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": r.ID}).
+			SetUpdate(bson.M{"$set": bson.M{"recentViews": r.N, "recentViewsGen": gen}}))
+		if len(models) == batch {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
 	}
-	models = append(models, mongo.NewUpdateManyModel().
-		SetFilter(bson.M{"_id": bson.M{"$nin": seen}, "recentViews": bson.M{"$ne": 0}}).
-		SetUpdate(bson.M{"$set": bson.M{"recentViews": 0}}))
-	if _, err = s.products.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false)); err != nil {
+	if err := cur.Err(); err != nil {
+		return err
+	}
+	if err := flush(); err != nil {
+		return err
+	}
+	// Products no longer viewed this week: found through the partial index on recentViews > 0.
+	if _, err := s.products.UpdateMany(ctx,
+		bson.M{"recentViews": bson.M{"$gt": 0}, "recentViewsGen": bson.M{"$ne": gen}},
+		bson.M{"$set": bson.M{"recentViews": 0}}); err != nil {
 		return err
 	}
 	s.cache.Invalidate(ctx, redisx.NSCatalog) // relevance ordering changed
@@ -786,84 +815,80 @@ func (s *Service) RemoveCategoryImage(ctx context.Context, id bson.ObjectID) (Ca
 // ---------- Media sweep ----------
 
 // ReferencedKeys returns every object key referenced by products and categories.
-func (s *Service) ReferencedKeys(ctx context.Context) (map[string]struct{}, error) {
-	keys := map[string]struct{}{}
-	cur, err := s.products.Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{"images.key": 1}))
-	if err != nil {
-		return nil, err
+// referenced returns which of keys are still used by a product, a category or an order line
+// (orders keep showing the image they were sold with). Each lookup is an indexed $in.
+func (s *Service) referenced(ctx context.Context, keys []string) (map[string]bool, error) {
+	used := make(map[string]bool, len(keys))
+	in := bson.M{"$in": keys}
+	lookups := []struct {
+		coll  *mongo.Collection
+		field string
+	}{
+		{s.products, "images.key"},
+		{s.categories, "image.key"},
+		{s.products.Database().Collection("orders"), "items.imageKey"},
 	}
-	for cur.Next(ctx) {
-		var p struct {
-			Images []struct {
-				Key string `bson:"key"`
-			} `bson:"images"`
-		}
-		if err := cur.Decode(&p); err != nil {
+	for _, l := range lookups {
+		var found []string
+		if err := l.coll.Distinct(ctx, l.field, bson.M{l.field: in}).Decode(&found); err != nil {
 			return nil, err
 		}
-		for _, i := range p.Images {
-			keys[i.Key] = struct{}{}
+		for _, k := range found {
+			used[k] = true
 		}
 	}
-	if err := cur.Err(); err != nil {
-		return nil, err
-	}
-	cats, err := s.categories.Find(ctx, bson.M{"image": bson.M{"$exists": true}}, options.Find().SetProjection(bson.M{"image.key": 1}))
-	if err != nil {
-		return nil, err
-	}
-	for cats.Next(ctx) {
-		var c struct {
-			Image struct {
-				Key string `bson:"key"`
-			} `bson:"image"`
-		}
-		if err := cats.Decode(&c); err != nil {
-			return nil, err
-		}
-		keys[c.Image.Key] = struct{}{}
-	}
-	if err := cats.Err(); err != nil {
-		return nil, err
-	}
-	// Order line items keep showing the product image they were sold with.
-	var ks []string
-	err = s.products.Database().Collection("orders").
-		Distinct(ctx, "items.imageKey", bson.M{"items.imageKey": bson.M{"$exists": true}}).Decode(&ks)
-	if err != nil {
-		return nil, err
-	}
-	for _, k := range ks {
-		keys[k] = struct{}{}
-	}
-	return keys, nil
+	return used, nil
 }
 
 // SweepOrphanedMedia deletes stored objects no document references. Objects
 // younger than grace are kept so in-flight uploads are never removed.
+// Candidates are checked in pages, so memory stays flat however many images exist.
 func (s *Service) SweepOrphanedMedia(ctx context.Context, grace time.Duration) (int, error) {
-	refs, err := s.ReferencedKeys(ctx)
-	if err != nil {
-		return 0, err
-	}
+	const page = 1000
 	cutoff := time.Now().Add(-grace)
-	var orphans []string
+	deleted := 0
+	var candidates []string
+	check := func() error {
+		if len(candidates) == 0 {
+			return nil
+		}
+		used, err := s.referenced(ctx, candidates)
+		if err != nil {
+			return err
+		}
+		var orphans []string
+		for _, k := range candidates {
+			if !used[k] {
+				orphans = append(orphans, k)
+			}
+		}
+		candidates = candidates[:0]
+		if len(orphans) == 0 {
+			return nil
+		}
+		if err := s.storage.Delete(ctx, orphans...); err != nil {
+			return err
+		}
+		deleted += len(orphans)
+		return nil
+	}
 	for _, prefix := range []string{ProductImagePrefix, CategoryImagePrefix} {
 		err := s.storage.Walk(ctx, prefix, func(key string, modified time.Time) error {
-			if _, ok := refs[key]; !ok && modified.Before(cutoff) {
-				orphans = append(orphans, key)
+			if !modified.Before(cutoff) {
+				return nil
+			}
+			candidates = append(candidates, key)
+			if len(candidates) == page {
+				return check()
 			}
 			return nil
 		})
+		if err == nil {
+			err = check()
+		}
 		if err != nil {
-			return 0, err
+			return deleted, err
 		}
 	}
-	if len(orphans) == 0 {
-		return 0, nil
-	}
-	if err := s.storage.Delete(ctx, orphans...); err != nil {
-		return 0, err
-	}
-	return len(orphans), nil
+	return deleted, nil
 }

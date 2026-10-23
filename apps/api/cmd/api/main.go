@@ -181,6 +181,8 @@ func run() error {
 	if cfg.JobsEnabled {
 		jobs.NewScheduler(mongox.NewLeases(db, fmt.Sprintf("%s-%d", host, os.Getpid())),
 			jobs.Job{Name: "recent-views", Every: time.Hour, Timeout: 5 * time.Minute, Run: catalogSvc.RefreshRecentViews},
+			// Moves page/product view counts buffered in Redis to MongoDB.
+			jobs.Job{Name: "analytics-flush", Every: 30 * time.Second, Timeout: 25 * time.Second, Run: analyticsSvc.Flush, Quiet: true},
 			// Repairs drift in the stored category product counts (and backfills them on first run).
 			jobs.Job{Name: "category-counts", Every: 6 * time.Hour, Timeout: 10 * time.Minute, Run: catalogSvc.RecountCategoryProducts},
 			jobs.Job{Name: "upload-sweep", Every: time.Hour, Timeout: 10 * time.Minute, Run: func(ctx context.Context) error {

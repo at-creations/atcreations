@@ -47,12 +47,16 @@ func (m *memStorage) Delete(_ context.Context, keys ...string) error {
 }
 func (m *memStorage) Walk(_ context.Context, prefix string, fn func(string, time.Time) error) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	matches := map[string]time.Time{}
 	for k, t := range m.objs {
 		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			if err := fn(k, t); err != nil {
-				return err
-			}
+			matches[k] = t
+		}
+	}
+	m.mu.Unlock() // like S3 listing, the callback may delete objects
+	for k, t := range matches {
+		if err := fn(k, t); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -274,9 +278,20 @@ func TestOrphanSweepKeepsReferencedObjects(t *testing.T) {
 	ctx := context.Background()
 	store.objs["products/x/orphan.jpg"] = time.Now().Add(-48 * time.Hour)
 	store.objs["products/x/fresh.jpg"] = time.Now()
+	store.objs["products/x/used.webp"] = time.Now().Add(-48 * time.Hour)
+	p, err := cat.CreateProduct(ctx, "u", &catalog.ProductInput{Status: catalog.StatusDraft, Name: catalog.NameInput{EN: "Kept"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.AttachProductImage(ctx, "u", p.ID, catalog.Image{ID: "1", Key: "products/x/used.webp", Width: 1, Height: 1}); err != nil {
+		t.Fatal(err)
+	}
 	n, err := cat.SweepOrphanedMedia(ctx, 24*time.Hour)
 	if err != nil || n != 1 {
 		t.Fatalf("swept %d (%v), want 1", n, err)
+	}
+	if _, ok := store.objs["products/x/used.webp"]; !ok {
+		t.Fatal("an image still on a product was removed")
 	}
 	if _, ok := store.objs["products/x/fresh.jpg"]; !ok {
 		t.Fatal("fresh upload was removed")

@@ -71,6 +71,17 @@ components:
               field: { type: string }
               message: { type: string }
 
+    ProductStats:
+      type: object
+      required: [all, draft, published, archived, outOfStock, lowStock, capped]
+      properties:
+        all: { type: integer }
+        draft: { type: integer }
+        published: { type: integer }
+        archived: { type: integer }
+        outOfStock: { type: integer, description: Published products with no stock }
+        lowStock: { type: integer, description: Published products with 1-5 in stock }
+        capped: { type: boolean, description: At least one count stopped at 10,000 }
     PageMeta:
       type: object
       required: [page, pageSize, total, totalPages]
@@ -692,6 +703,25 @@ paths:
         '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
+  /v1/admin/products/stats:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Counts per status and stock alerts for the given filters (role staff+)
+      description: Each count is index-backed and stops at 10,000 (capped).
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/ObjectID' } }
+        - { name: uncategorized, in: query, schema: { type: boolean } }
+        - { name: featured, in: query, schema: { type: boolean } }
+        - { name: minPrice, in: query, schema: { type: integer } }
+        - { name: maxPrice, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/ProductStats' } } }
   /v1/admin/products/{id}:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     get:

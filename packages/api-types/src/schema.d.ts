@@ -587,6 +587,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/products/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Counts per status and stock alerts for the given filters (role staff+)
+         * @description Each count is index-backed and stops at 10,000 (capped).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                    category?: components["schemas"]["ObjectID"];
+                    uncategorized?: boolean;
+                    featured?: boolean;
+                    minPrice?: number;
+                    maxPrice?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ProductStats"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/products/{id}": {
         parameters: {
             query?: never;
@@ -1936,6 +1984,18 @@ export interface components {
                 field: string;
                 message: string;
             }[];
+        };
+        ProductStats: {
+            all: number;
+            draft: number;
+            published: number;
+            archived: number;
+            /** @description Published products with no stock */
+            outOfStock: number;
+            /** @description Published products with 1-5 in stock */
+            lowStock: number;
+            /** @description At least one count stopped at 10 */
+            capped: boolean;
         };
         PageMeta: {
             page: number;

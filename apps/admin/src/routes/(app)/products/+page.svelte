@@ -22,7 +22,14 @@
 	import Thumb from '$lib/components/ui/Thumb.svelte';
 	import Tip from '$lib/components/ui/Tip.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
-	import { formatDate, localized, priceErrorMessage, productStatusLabel } from '$lib/i18n';
+	import {
+		formatDate,
+		formatTotal,
+		localized,
+		MAX_COUNT,
+		priceErrorMessage,
+		productStatusLabel
+	} from '$lib/i18n';
 	import { storefrontProductUrl } from '$lib/links';
 	import { toastError } from '$lib/notify';
 	import { m } from '$lib/paraglide/messages.js';
@@ -30,6 +37,7 @@
 		categoriesQuery,
 		createDeleteProductMutation,
 		productListQuery,
+		productStatsQuery,
 		type ProductListParams
 	} from '$lib/queries';
 	import { confirmAction } from '$lib/state/confirm.svelte';
@@ -128,23 +136,20 @@
 	const categoriesList = createQuery(() => categoriesQuery());
 	const deleteProduct = createDeleteProductMutation();
 
-	const countQuery = (status?: ProductStatus) =>
-		createQuery(() => ({
-			...productListQuery({ ...baseParams, pageSize: 1, status }),
-			select: (res) => res.meta.total
-		}));
-	const counts = {
-		all: countQuery(),
-		published: countQuery('published'),
-		draft: countQuery('draft'),
-		archived: countQuery('archived')
-	};
+	// One request for every tab's counter (same filters, any status).
+	const stats = createQuery(() => ({
+		...productStatsQuery(baseParams),
+		placeholderData: keepPreviousData
+	}));
+	// Counts stop at 10,000 (the API caps them): shown as "10,000+".
+	const tabCount = (n: number | undefined) =>
+		n === undefined ? null : formatTotal({ total: n, totalCapped: n >= MAX_COUNT });
 	const statusTabs = $derived([
-		{ value: '' as const, label: m.common_all(), count: counts.all.data ?? null },
+		{ value: '' as const, label: m.common_all(), count: tabCount(stats.data?.all) },
 		...STATUSES.map((s) => ({
 			value: s,
 			label: productStatusLabel(s),
-			count: counts[s].data ?? null
+			count: tabCount(stats.data?.[s])
 		}))
 	]);
 
@@ -253,10 +258,10 @@
 
 <PageHeader title={m.nav_products()}>
 	{#snippet meta()}
-		{#if counts.all.data !== undefined && !hasFilters}
+		{#if stats.data !== undefined && !hasFilters}
 			<span
 				class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 tabular-nums"
-				>{counts.all.data}</span
+				>{tabCount(stats.data.all)}</span
 			>
 		{/if}
 	{/snippet}

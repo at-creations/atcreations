@@ -3,8 +3,8 @@
 		/** '' = "All". */
 		value: V | '';
 		label: string;
-		/** undefined = no counter, null = still loading. */
-		count?: number | null;
+		/** undefined = no counter, null = still loading; a string is shown as formatted. */
+		count?: number | string | null;
 	}
 </script>
 

@@ -102,22 +102,28 @@ func (s *Service) HandleRecordView(w http.ResponseWriter, r *http.Request) error
 
 // ---------- Admin: products ----------
 
-func (s *Service) HandleAdminProducts(w http.ResponseWriter, r *http.Request) error {
-	q := httpx.NewQuery(r)
+// adminFilters parses the filters shared by the admin product list and its stats.
+func adminFilters(q *httpx.Query) ProductQuery {
 	pq := ProductQuery{
 		Text:       q.String("q", 100),
-		Status:     q.Enum("status", "", StatusDraft, StatusPublished, StatusArchived),
 		CategoryID: q.OptObjectID("category"),
 		Featured:   q.OptBool("featured"),
 		MinPrice:   q.OptInt64("minPrice", 0, 100_000_000),
 		MaxPrice:   q.OptInt64("maxPrice", 0, 100_000_000),
-		Sort:       q.Enum("sort", "newest", adminSorts...),
 		Locale:     "en",
-		Page:       q.Page(25, 100),
 	}
 	if u := q.OptBool("uncategorized"); u != nil {
 		pq.Uncategorized = *u
 	}
+	return pq
+}
+
+func (s *Service) HandleAdminProducts(w http.ResponseWriter, r *http.Request) error {
+	q := httpx.NewQuery(r)
+	pq := adminFilters(q)
+	pq.Status = q.Enum("status", "", StatusDraft, StatusPublished, StatusArchived)
+	pq.Sort = q.Enum("sort", "newest", adminSorts...)
+	pq.Page = q.Page(25, 100)
 	if err := q.Err(); err != nil {
 		return err
 	}
@@ -284,4 +290,20 @@ func actorID(r *http.Request) string {
 		return p.UserID
 	}
 	return ""
+}
+
+// HandleAdminProductStats answers GET /v1/admin/products/stats: counts per status and stock
+// alerts for the given filters, in one request (the list's tabs and the dashboard).
+func (s *Service) HandleAdminProductStats(w http.ResponseWriter, r *http.Request) error {
+	q := httpx.NewQuery(r)
+	pq := adminFilters(q)
+	if err := q.Err(); err != nil {
+		return err
+	}
+	stats, err := s.ProductStats(r.Context(), pq)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusOK, stats)
+	return nil
 }

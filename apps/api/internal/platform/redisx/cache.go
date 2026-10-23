@@ -14,14 +14,16 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 )
 
 // Cache namespaces. A write bumps its namespace version, which instantly
 // orphans every cached entry of that namespace (they then expire by TTL), so
 // invalidation never needs KEYS/SCAN.
 const (
-	NSCatalog = "catalog"
-	NSStore   = "store"
+	NSCatalog   = "catalog"
+	NSStore     = "store"
+	NSAnalytics = "analytics" // never invalidated: entries just expire
 )
 
 const maxCachedBody = 1 << 20 // 1 MiB
@@ -30,6 +32,7 @@ const maxCachedBody = 1 << 20 // 1 MiB
 type Cache struct {
 	rdb    *redis.Client
 	prefix string
+	flight singleflight.Group
 }
 
 func NewCache(rdb *redis.Client) *Cache {
@@ -77,32 +80,45 @@ func requestKey(r *http.Request) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-type captureWriter struct {
-	http.ResponseWriter
+// recorder buffers a handler's response so it can be cached and shared.
+type recorder struct {
+	header http.Header
 	status int
-	buf    bytes.Buffer
+	body   bytes.Buffer
 }
 
-func (w *captureWriter) WriteHeader(code int) {
-	if w.status == 0 {
-		w.status = code
+func (r *recorder) Header() http.Header { return r.header }
+func (r *recorder) WriteHeader(code int) {
+	if r.status == 0 {
+		r.status = code
 	}
-	w.ResponseWriter.WriteHeader(code)
+}
+func (r *recorder) Write(p []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.body.Write(p)
 }
 
-func (w *captureWriter) Write(p []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
+func (r *recorder) replay(w http.ResponseWriter) {
+	for k, v := range r.header {
+		w.Header()[k] = v
 	}
-	if w.buf.Len()+len(p) <= maxCachedBody {
-		w.buf.Write(p)
-	}
-	return w.ResponseWriter.Write(p)
+	w.WriteHeader(r.status)
+	_, _ = w.Write(r.body.Bytes())
 }
 
-// Middleware serves cached 200 JSON responses for GET requests in namespace
-// ns and stores fresh ones for ttl. Redis errors bypass the cache.
-func (c *Cache) Middleware(ns string, ttl time.Duration) func(http.Handler) http.Handler {
+// Middleware serves cached 200 JSON responses for GET requests in namespace ns and stores
+// fresh ones for ttl. Only the query parameters in params make up the key; a request with any
+// other parameter bypasses the cache, so junk parameters can neither miss on purpose nor fill
+// Redis. Concurrent misses for one key run the handler once per instance (singleflight), so an
+// invalidation does not send every waiting request to the database at once. Redis errors bypass
+// the cache.
+func (c *Cache) Middleware(ns string, ttl time.Duration, params ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(params))
+	for _, p := range params {
+		allowed[p] = true
+	}
 	return func(next http.Handler) http.Handler {
 		if c == nil {
 			return next
@@ -111,6 +127,13 @@ func (c *Cache) Middleware(ns string, ttl time.Duration) func(http.Handler) http
 			if r.Method != http.MethodGet {
 				next.ServeHTTP(w, r)
 				return
+			}
+			for k := range r.URL.Query() {
+				if !allowed[k] {
+					w.Header().Set("X-Cache", "BYPASS")
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			ctx := r.Context()
 			ver, err := c.rdb.Get(ctx, c.versionKey(ns)).Result()
@@ -130,14 +153,20 @@ func (c *Cache) Middleware(ns string, ttl time.Duration) func(http.Handler) http
 				_, _ = w.Write(body)
 				return
 			}
-			w.Header().Set("X-Cache", "MISS")
-			cw := &captureWriter{ResponseWriter: w}
-			next.ServeHTTP(cw, r)
-			if cw.status == http.StatusOK && cw.buf.Len() > 0 && cw.buf.Len() < maxCachedBody {
-				if err := c.rdb.Set(context.WithoutCancel(ctx), key, cw.buf.Bytes(), ttl).Err(); err != nil {
-					slog.DebugContext(ctx, "cache store failed", "err", err)
+			v, _, shared := c.flight.Do(key, func() (any, error) {
+				// Detached from the first caller, whose cancellation must not fail the others.
+				rec := &recorder{header: http.Header{}}
+				next.ServeHTTP(rec, r.WithContext(context.WithoutCancel(ctx)))
+				if rec.status == http.StatusOK && rec.body.Len() > 0 && rec.body.Len() < maxCachedBody {
+					if err := c.rdb.Set(context.WithoutCancel(ctx), key, rec.body.Bytes(), ttl).Err(); err != nil {
+						slog.DebugContext(ctx, "cache store failed", "err", err)
+					}
 				}
-			}
+				return rec, nil
+			})
+			rec := v.(*recorder)
+			w.Header().Set("X-Cache", map[bool]string{true: "SHARED", false: "MISS"}[shared])
+			rec.replay(w)
 		})
 	}
 }

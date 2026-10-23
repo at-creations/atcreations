@@ -14,6 +14,9 @@ function intlLocale() {
 	return getLocale() === 'vi' ? 'vi-VN' : 'en-CA';
 }
 
+/** The API stops counting at this many matches (list totals, product stats). */
+export const MAX_COUNT = 10_000;
+
 /** A list total; "10,000+" when the API stopped counting (meta.totalCapped). */
 export function formatTotal(meta: { total: number; totalCapped?: boolean }): string {
 	const n = new Intl.NumberFormat(intlLocale()).format(meta.total);

@@ -57,12 +57,21 @@ func (s *Service) EnsureIndexes(ctx context.Context) error {
 		mongox.Index{Keys: bson.D{{Key: "createdAt", Value: -1}}},
 		mongox.Index{Keys: bson.D{{Key: "customer.email", Value: 1}, {Key: "createdAt", Value: -1}}},
 		mongox.Index{Keys: bson.D{{Key: "searchWords", Value: 1}, {Key: "createdAt", Value: -1}}},
+		mongox.Index{Keys: bson.D{{Key: "items.imageKey", Value: 1}}}, // media sweep keeps sold images
 		// total_desc / total_asc (exact reverses), with and without a status filter.
 		mongox.Index{Keys: bson.D{{Key: "totalCents", Value: -1}, {Key: "createdAt", Value: -1}}},
 		mongox.Index{Keys: bson.D{{Key: "status", Value: 1}, {Key: "totalCents", Value: -1}, {Key: "createdAt", Value: -1}}},
 		// Covers the analytics report's sales and status queries (no document reads).
 		mongox.Index{Keys: bson.D{{Key: "createdAt", Value: 1}, {Key: "status", Value: 1}, {Key: "totalCents", Value: 1}}},
 	)
+}
+
+// maxHistory bounds an order's history (the oldest events are dropped beyond it), so repeated
+// note or shipping edits cannot grow a document without limit.
+const maxHistory = 200
+
+func pushHistory(ev Event) bson.M {
+	return bson.M{"history": bson.M{"$each": bson.A{ev}, "$slice": -maxHistory}}
 }
 
 func orderSearchWords(o *Order) []string {
@@ -228,7 +237,7 @@ func (s *Service) notify(ctx context.Context, id bson.ObjectID, send func(contex
 		slog.ErrorContext(ctx, "order email failed", "err", err, "order", id.Hex())
 		return
 	}
-	_, err := s.orders.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$push": bson.M{"history": Event{Type: "customer_notified", At: time.Now().UTC(), Actor: "system"}}})
+	_, err := s.orders.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$push": pushHistory(Event{Type: "customer_notified", At: time.Now().UTC(), Actor: "system"})})
 	if err != nil {
 		slog.WarnContext(ctx, "record notification failed", "err", err)
 	}
@@ -359,7 +368,7 @@ func (s *Service) Transition(ctx context.Context, actor string, id bson.ObjectID
 		}
 		ev := Event{Type: "status_changed", At: now, Actor: actor, FromStatus: cur.Status, ToStatus: in.Status, Note: strings.TrimSpace(in.Note)}
 		err := s.orders.FindOneAndUpdate(tx, bson.M{"_id": id, "status": cur.Status},
-			bson.M{"$set": set, "$push": bson.M{"history": ev}},
+			bson.M{"$set": set, "$push": pushHistory(ev)},
 			options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updated)
 		if mongox.IsNotFound(err) {
 			return nil, httpx.Conflict("order changed concurrently; reload and try again")
@@ -395,7 +404,7 @@ func (s *Service) SetStaffNote(ctx context.Context, actor string, id bson.Object
 	var o Order
 	err := s.orders.FindOneAndUpdate(ctx, bson.M{"_id": id},
 		bson.M{"$set": bson.M{"staffNote": strings.TrimSpace(note), "updatedAt": now},
-			"$push": bson.M{"history": Event{Type: "note_updated", At: now, Actor: actor}}},
+			"$push": pushHistory(Event{Type: "note_updated", At: now, Actor: actor})},
 		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&o)
 	if mongox.IsNotFound(err) {
 		return nil, httpx.ErrNotFound
@@ -413,7 +422,7 @@ func (s *Service) SetShipping(ctx context.Context, actor string, id bson.ObjectI
 	var o Order
 	err := s.orders.FindOneAndUpdate(ctx, bson.M{"_id": id, "status": bson.M{"$in": editable}},
 		bson.M{"$set": bson.M{"shipping": addr, "updatedAt": now},
-			"$push": bson.M{"history": Event{Type: "shipping_updated", At: now, Actor: actor}}},
+			"$push": pushHistory(Event{Type: "shipping_updated", At: now, Actor: actor})},
 		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&o)
 	if mongox.IsNotFound(err) {
 		if _, gerr := s.Get(ctx, id); gerr != nil {

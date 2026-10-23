@@ -15,6 +15,8 @@ type Job struct {
 	Every   time.Duration
 	Timeout time.Duration
 	Run     func(ctx context.Context) error
+	// Quiet logs successful runs at debug level (for frequent jobs).
+	Quiet bool
 }
 
 type Scheduler struct {
@@ -67,5 +69,9 @@ func (s *Scheduler) runOnce(ctx context.Context, j Job) {
 		_ = s.leases.Release(context.WithoutCancel(ctx), j.Name)
 		return
 	}
-	log.Info("job finished", "duration_ms", time.Since(start).Milliseconds())
+	level := slog.LevelInfo
+	if j.Quiet {
+		level = slog.LevelDebug
+	}
+	log.Log(ctx, level, "job finished", "duration_ms", time.Since(start).Milliseconds())
 }

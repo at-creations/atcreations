@@ -137,6 +137,22 @@ func (s *Service) RecordPageView(ctx context.Context, v PageView) error {
 	now := s.now()
 	day, dayStart := s.dayOf(now)
 
+	counters := []counter{
+		{dimPath, path},
+		{dimRef, s.ReferrerHost(v.Referrer)},
+		{dimDevice, Device(v.UserAgent)},
+	}
+	if c := NormalizeCountry(v.Country); c != "" {
+		counters = append(counters, counter{dimCountry, c})
+	}
+	if s.rdb != nil {
+		err := s.buffer(ctx, day, "pageViews", s.visitorID(day, v.IP, v.UserAgent), counters)
+		if err == nil {
+			return nil
+		}
+		slog.WarnContext(ctx, "analytics: buffering failed, writing directly", "err", err)
+	}
+
 	inc := bson.M{"pageViews": 1}
 	update := bson.M{"$inc": inc, "$setOnInsert": bson.M{"date": dayStart}}
 	if n, ok := s.countVisitor(ctx, day, v.IP, v.UserAgent); ok {
@@ -146,14 +162,6 @@ func (s *Service) RecordPageView(ctx context.Context, v PageView) error {
 		return fmt.Errorf("record page view: %w", err)
 	}
 
-	counters := []struct{ dim, key string }{
-		{dimPath, path},
-		{dimRef, s.ReferrerHost(v.Referrer)},
-		{dimDevice, Device(v.UserAgent)},
-	}
-	if c := NormalizeCountry(v.Country); c != "" {
-		counters = append(counters, struct{ dim, key string }{dimCountry, c})
-	}
 	models := make([]mongo.WriteModel, 0, len(counters))
 	for _, c := range counters {
 		models = append(models, s.dimIncrement(day, dayStart, c.dim, c.key))
@@ -168,6 +176,13 @@ func (s *Service) RecordPageView(ctx context.Context, v PageView) error {
 // Failures are logged, never returned: analytics must not break the storefront.
 func (s *Service) RecordProductView(ctx context.Context, productID bson.ObjectID) {
 	day, dayStart := s.dayOf(s.now())
+	if s.rdb != nil {
+		err := s.buffer(ctx, day, "productViews", "", []counter{{dimProduct, productID.Hex()}})
+		if err == nil {
+			return
+		}
+		slog.WarnContext(ctx, "analytics: buffering failed, writing directly", "err", err)
+	}
 	_, err := s.daily.UpdateOne(ctx, bson.M{"_id": day},
 		bson.M{"$inc": bson.M{"productViews": 1}, "$setOnInsert": bson.M{"date": dayStart}},
 		options.UpdateOne().SetUpsert(true))
@@ -192,10 +207,8 @@ func (s *Service) countVisitor(ctx context.Context, day, ip, ua string) (int64, 
 	if s.rdb == nil {
 		return 0, false
 	}
-	mac := hmac.New(sha256.New, s.pepper)
-	_, _ = fmt.Fprintf(mac, "visitor|%s|%s|%s", day, ip, ua)
-	id := hex.EncodeToString(mac.Sum(nil)[:16])
-	key := "analytics:uv:" + day
+	id := s.visitorID(day, ip, ua)
+	key := visitorsKey(day)
 	pipe := s.rdb.TxPipeline()
 	pipe.PFAdd(ctx, key, id)
 	pipe.Expire(ctx, key, visitorKeyTTL)
@@ -205,6 +218,13 @@ func (s *Service) countVisitor(ctx context.Context, day, ip, ua string) (int64, 
 		return 0, false
 	}
 	return count.Val(), true
+}
+
+// visitorID is a keyed hash of (day, IP, user agent): it cannot be linked across days.
+func (s *Service) visitorID(day, ip, ua string) string {
+	mac := hmac.New(sha256.New, s.pepper)
+	_, _ = fmt.Fprintf(mac, "visitor|%s|%s|%s", day, ip, ua)
+	return hex.EncodeToString(mac.Sum(nil)[:16])
 }
 
 // dayOf returns the store-local day key and the UTC instant at which that day starts.
