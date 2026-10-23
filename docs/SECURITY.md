@@ -41,9 +41,11 @@
 
 **Dev tunnel** — The optional Cloudflare Tunnel for the dev stack routes only the storefront, admin and API (catch-all 404); databases are never exposed. Tunnel credentials and the account certificate are git-ignored and excluded from Docker build contexts; the container gets only the tunnel credentials, read-only, with all capabilities dropped. The dev hostnames should sit behind Cloudflare Access. Vite only answers the tunnel hostnames it is told about (`VITE_ALLOWED_HOSTS`), which blocks DNS-rebinding against the dev servers.
 
-**Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
+**Rate limits** (per real client IP, shared across API replicas via Redis) — global 300/min; view counter 30/min; page-view beacon 120/min; analytics report 60/min; order placement 5/10 min; order tracking 10/15 min; uploads 60/min; staff management 60/min.
 
 **Data** — Least-privilege Mongo user (`readWrite` on the app DB only); visitor fingerprints are keyed hashes; audit log of every admin mutation; nightly `mongodump` with retention (copy off-host).
+
+**Analytics** — No cookies, IP addresses or user agents are stored. Unique visitors are counted with a keyed, day-scoped hash that lives only in a Redis HyperLogLog for 48 h; MongoDB keeps aggregate counters (path, referrer host, device class, country) for 400 days. `DNT`/`Sec-GPC` and bots are not counted. The beacon is rate limited (120/min per IP), validates and normalises its input, and always answers 204 so it cannot be used to probe what was counted. The report needs `orders:read`.
 
 **Uploads** — At most two images are decoded at once; header-based limits reject anything over 32 MP or 128 MB decoded (catches 16-bit "decompression bombs"); `GOMEMLIMIT` keeps the Go heap under the container limit. Product image objects are removed by the nightly sweep, which keeps any image still shown on past orders.
 

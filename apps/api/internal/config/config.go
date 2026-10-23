@@ -64,6 +64,10 @@ type Config struct {
 	// Secret pepper for hashing order access codes and visitor fingerprints.
 	HashPepper string `env:"HASH_PEPPER,required,unset"`
 
+	// IANA time zone that analytics days are counted in.
+	AnalyticsTimezone string         `env:"ANALYTICS_TIMEZONE" envDefault:"America/Vancouver"`
+	AnalyticsLocation *time.Location `env:"-"`
+
 	PublicCheckoutEnabled bool `env:"FEATURE_PUBLIC_CHECKOUT" envDefault:"false"`
 	JobsEnabled           bool `env:"JOBS_ENABLED" envDefault:"true"`
 
@@ -111,6 +115,12 @@ func (c *Config) validate() error {
 	if c.LegacyCORSOrigins != "" {
 		c.Warnings = append(c.Warnings, "CORS_ALLOWED_ORIGINS is ignored; use CORS_PUBLIC_ORIGINS (storefront) and CORS_ADMIN_ORIGINS (admin dashboard)")
 	}
+	if loc, err := time.LoadLocation(c.AnalyticsTimezone); err != nil {
+		errs = append(errs, fmt.Errorf("ANALYTICS_TIMEZONE: %w", err))
+	} else {
+		c.AnalyticsLocation = loc
+	}
+
 	c.ClerkAuthorizedParties = trimAll(c.ClerkAuthorizedParties)
 	if c.IsProduction() && len(c.ClerkAuthorizedParties) == 0 {
 		errs = append(errs, errors.New("CLERK_AUTHORIZED_PARTIES is required in production"))

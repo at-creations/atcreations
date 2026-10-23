@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
+	"github.com/atcreations/atcreations/apps/api/internal/analytics"
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
 	"github.com/atcreations/atcreations/apps/api/internal/catalog"
@@ -36,6 +37,7 @@ type Deps struct {
 	StoreInfo *storeinfo.Service
 	Staff     *staff.Service
 	Audit     *audit.Log
+	Analytics *analytics.Handlers
 }
 
 func byClientIP(r *http.Request) (string, error) { return httpx.ClientIPFrom(r.Context()), nil }
@@ -114,6 +116,7 @@ func New(d Deps) http.Handler {
 			r.With(d.Cache.Middleware(redisx.NSStore, time.Hour)).Get("/store-info", w(d.StoreInfo.HandleGet))
 		})
 		r.With(limit("views", 30, time.Minute)).Post("/products/{id}/views", w(c.HandleRecordView))
+		r.With(limit("events", 120, time.Minute)).Post("/events/pageview", w(d.Analytics.PageView))
 		r.With(limit("orders", 5, 10*time.Minute)).Post("/orders", w(o.Create))
 		r.With(limit("track", 10, 15*time.Minute)).Post("/orders/track", w(o.Track))
 
@@ -141,6 +144,9 @@ func New(d Deps) http.Handler {
 			r.With(can(auth.CategoriesWrite)).Delete("/categories/{id}/image", w(c.HandleRemoveCategoryImage))
 
 			r.With(can(auth.StoreWrite)).Put("/store-info", w(d.StoreInfo.HandlePut))
+
+			// Revenue figures: visible to whoever may read orders.
+			r.With(can(auth.OrdersRead), limit("analytics", 60, time.Minute)).Get("/analytics", w(d.Analytics.Report))
 
 			r.With(can(auth.OrdersRead)).Get("/orders", w(o.List))
 			r.With(can(auth.OrdersRead)).Get("/orders/{id}", w(o.Get))

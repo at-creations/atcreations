@@ -37,7 +37,12 @@ type Service struct {
 	audit      *audit.Log
 	pepper     []byte
 	cache      *redisx.Cache // nil-safe; invalidated after every catalogue write
+	// onView, when set, receives every counted (de-duplicated) product view.
+	onView func(ctx context.Context, id bson.ObjectID)
 }
+
+// OnProductView registers a callback for counted product views (the analytics rollup).
+func (s *Service) OnProductView(fn func(ctx context.Context, id bson.ObjectID)) { s.onView = fn }
 
 func NewService(db *mongo.Database, storage media.Storage, audit *audit.Log, cache *redisx.Cache, pepper string) *Service {
 	return &Service{
@@ -594,8 +599,13 @@ func (s *Service) RecordView(ctx context.Context, id bson.ObjectID, ip, userAgen
 	if err != nil {
 		return err
 	}
-	_, err = s.products.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$inc": bson.M{"views": 1}})
-	return err
+	if _, err = s.products.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$inc": bson.M{"views": 1}}); err != nil {
+		return err
+	}
+	if s.onView != nil {
+		s.onView(ctx, id)
+	}
+	return nil
 }
 
 // RefreshRecentViews recomputes the 7-day view counter used for "trending" ordering.

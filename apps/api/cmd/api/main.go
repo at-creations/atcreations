@@ -11,12 +11,14 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the distroless image has no zoneinfo; ANALYTICS_TIMEZONE needs it
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/invitation"
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/atcreations/atcreations/apps/api/internal/analytics"
 	"github.com/atcreations/atcreations/apps/api/internal/audit"
 	"github.com/atcreations/atcreations/apps/api/internal/auth"
 	"github.com/atcreations/atcreations/apps/api/internal/catalog"
@@ -126,9 +128,13 @@ func run() error {
 	orderSvc := orders.NewService(mongoClient, db, storage, orders.NewMailer(sender, cfg.StoreName, cfg.StorefrontURL), auditLog, cache, cfg.HashPepper)
 	storeSvc := storeinfo.New(db, auditLog, cache)
 	staffSvc := staff.New(users, invitations, directory, auditLog, rdb, cfg.ClerkInviteRedirectURL)
+	analyticsSvc := analytics.New(db, rdb, cfg.HashPepper, analytics.Options{
+		Location: cfg.AnalyticsLocation, StorefrontURL: cfg.StorefrontURL, ImageURL: storage.URL,
+	})
+	catalogSvc.OnProductView(analyticsSvc.RecordProductView)
 
 	idxCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	for _, ensure := range []func(context.Context) error{auditLog.EnsureIndexes, catalogSvc.EnsureIndexes, orderSvc.EnsureIndexes} {
+	for _, ensure := range []func(context.Context) error{auditLog.EnsureIndexes, catalogSvc.EnsureIndexes, orderSvc.EnsureIndexes, analyticsSvc.EnsureIndexes} {
 		if err := ensure(idxCtx); err != nil {
 			cancel()
 			return err
@@ -154,6 +160,7 @@ func run() error {
 		Config: cfg, Mongo: mongoClient, Redis: rdb, Cache: cache, Auth: auth.NewMiddleware(cfg.ClerkAuthorizedParties, directory),
 		Catalog: catalogSvc, Orders: orders.NewHandlers(orderSvc, cfg.PublicCheckoutEnabled),
 		StoreInfo: storeSvc, Staff: staffSvc, Audit: auditLog,
+		Analytics: analytics.NewHandlers(analyticsSvc, cfg.TrustedProxyPrefixes),
 	})
 
 	srv := &http.Server{

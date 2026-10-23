@@ -289,6 +289,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/events/pageview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a storefront page view (first-party, cookieless; rate limited)
+         * @description No cookies or IP addresses are stored. Unique visitors are counted with a daily-rotating
+         *     keyed hash held only in Redis. Requests with `DNT: 1` or `Sec-GPC: 1`, and known bots, are
+         *     accepted but not counted.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PageViewInput"];
+                };
+            };
+            responses: {
+                /** @description Recorded (or ignored) */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                422: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/store-info": {
         parameters: {
             query?: never;
@@ -1574,6 +1619,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sales and traffic report for the last N days (orders:read) */
+        get: {
+            parameters: {
+                query?: {
+                    days?: 7 | 30 | 90;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["AnalyticsReport"];
+                        };
+                    };
+                };
+                403: components["responses"]["Problem"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/audit": {
         parameters: {
             query?: never;
@@ -1887,6 +1973,93 @@ export interface components {
             requestId?: string;
             /** Format: date-time */
             at: string;
+        };
+        PageViewInput: {
+            /**
+             * @description Storefront path without query or fragment, e.g. /en/products/vase
+             * @example /en/products/vase
+             */
+            path: string;
+            /** @description document.referrer; only its host is kept */
+            referrer?: string;
+        };
+        AnalyticsTotals: {
+            /**
+             * Format: int64
+             * @description Total of orders that were not cancelled or refunded
+             */
+            revenueCents: number;
+            /**
+             * Format: int64
+             * @description Orders placed (excluding cancelled and refunded)
+             */
+            orders: number;
+            /** Format: int64 */
+            avgOrderCents: number;
+            /**
+             * Format: int64
+             * @description Sum of daily unique visitors (approximate)
+             */
+            visitors: number;
+            /** Format: int64 */
+            pageViews: number;
+            /** Format: int64 */
+            productViews: number;
+        };
+        AnalyticsDay: {
+            /**
+             * Format: date
+             * @description Day in the store's time zone
+             */
+            date: string;
+            /** Format: int64 */
+            revenueCents: number;
+            /** Format: int64 */
+            orders: number;
+            /** Format: int64 */
+            visitors: number;
+            /** Format: int64 */
+            pageViews: number;
+        };
+        AnalyticsProduct: {
+            productId: components["schemas"]["ObjectID"];
+            name: components["schemas"]["LocalizedText"];
+            imageUrl?: string;
+            /** Format: int64 */
+            unitsSold: number;
+            /** Format: int64 */
+            revenueCents: number;
+            /** Format: int64 */
+            views: number;
+        };
+        AnalyticsCount: {
+            /** @description Path, referrer host, device type or ISO country code */
+            key: string;
+            /** Format: int64 */
+            count: number;
+        };
+        AnalyticsReport: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+            /** @example America/Vancouver */
+            timezone: string;
+            totals: components["schemas"]["AnalyticsTotals"];
+            /** @description Same-length period immediately before */
+            previous: components["schemas"]["AnalyticsTotals"];
+            daily: components["schemas"]["AnalyticsDay"][];
+            ordersByStatus: {
+                status: components["schemas"]["OrderStatus"];
+                /** Format: int64 */
+                count: number;
+            }[];
+            topSelling: components["schemas"]["AnalyticsProduct"][];
+            topViewed: components["schemas"]["AnalyticsProduct"][];
+            pages: components["schemas"]["AnalyticsCount"][];
+            referrers: components["schemas"]["AnalyticsCount"][];
+            devices: components["schemas"]["AnalyticsCount"][];
+            countries: components["schemas"]["AnalyticsCount"][];
         };
     };
     responses: {

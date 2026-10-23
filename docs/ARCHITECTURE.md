@@ -43,6 +43,7 @@
 | `staff` | Invitations, roles, ban/delete via Clerk Backend API with safety guards |
 | `storeinfo` | Store contact info and business hours |
 | `audit` | Append-only audit log of admin mutations (2-year TTL) |
+| `analytics` | Cookieless storefront page views, daily traffic rollups, the admin sales and traffic report |
 | `media` | Image validation/re-encoding, S3/R2 storage |
 | `jobs` | Interval jobs guarded by MongoDB leases (multi-replica safe) |
 | `platform/redisx` | Redis connection, versioned response cache middleware, distributed lock |
@@ -72,6 +73,8 @@ Roles live in Clerk `publicMetadata.role`. The API maps them to permissions (`in
 | `store_info` | Singleton (`_id: "store"`). |
 | `audit_log` | Actor, action, resource, request id, IP; TTL 2 years. |
 | `job_leases` | Distributed locks for scheduled jobs. |
+| `analytics_daily` | One doc per store-local day (`_id: "YYYY-MM-DD"`): `pageViews`, `visitors` (HyperLogLog estimate), `productViews`. TTL 400 days. |
+| `analytics_dims` | Per-day counters by dimension (`path`, `ref` host, `device`, `country`, `product`), unique on `{day, dim, key}`. TTL 400 days. |
 
 Indexes are created idempotently at startup (`EnsureIndexes`).
 
@@ -96,13 +99,21 @@ pending → confirmed → processing → shipped → delivered → completed
 cancelled  cancelled   cancelled              refunded    refunded
 ```
 
+## Analytics
+
+First-party and cookieless; no third-party script.
+
+- **Collection.** The storefront posts `POST /v1/events/pageview` (`{path, referrer}`) after every navigation; product pages keep posting to `/v1/products/{id}/views`, which now also feeds the daily rollup. The API drops bots, invalid paths and requests with `DNT: 1` or `Sec-GPC: 1` (the storefront also checks them before sending). It stores only counters: the path, the referrer **host**, a device class derived from the user agent, and the country from Cloudflare's `CF-IPCountry` (trusted only from `TRUSTED_PROXIES`).
+- **Unique visitors.** HMAC(pepper, day + IP + user agent) is added to a Redis HyperLogLog (`analytics:uv:<day>`, 48 h TTL); only the day's count is written to MongoDB. Without Redis, visitors are not counted. A visitor seen on two days counts on both.
+- **Report.** `GET /v1/admin/analytics?days=7|30|90` (`orders:read`) returns revenue and orders (excluding cancelled/refunded) per day, totals plus the previous period for comparison, orders by status, top-selling and most-viewed products, and top pages, sources, devices and countries. Days follow `ANALYTICS_TIMEZONE` (default `America/Vancouver`).
+
 ## Caching
 
 | Layer | What | Invalidation |
 |---|---|---|
 | Redis response cache (API) | `GET /v1/categories*`, `/v1/products*` (5 min), `/v1/store-info` (1 h) | Every catalogue write (products, categories, images, stock changes from orders, the recent-views job) bumps the `catalog` namespace version; store-info writes bump `store`. Old entries are orphaned instantly and expire by TTL. Responses carry `X-Cache: HIT/MISS`. |
 | HTTP `Cache-Control` | Public catalogue responses `max-age=60` | Time-based |
-| TanStack Query (admin) | Every admin API read, keyed by a typed query-key factory | Mutations invalidate or set the affected queries; data is cleared on sign-out |
+| TanStack Query (admin) | Every admin API read, keyed by a typed query-key factory | Cached data is shown at once and revalidated on mount, focus and reconnect; orders poll every 30 s and the analytics report every 60 s while visible; mutations invalidate or set the affected queries and are broadcast to the admin's other tabs; data is cleared on sign-out |
 
 The storefront renders on the server (SEO), so it relies on the API cache rather than a client-side query cache.
 

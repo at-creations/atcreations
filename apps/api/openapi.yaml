@@ -390,6 +390,78 @@ components:
         requestId: { type: string }
         at: { type: string, format: date-time }
 
+    PageViewInput:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path: { type: string, maxLength: 300, description: 'Storefront path without query or fragment, e.g. /en/products/vase', example: /en/products/vase }
+        referrer: { type: string, maxLength: 1000, description: 'document.referrer; only its host is kept' }
+
+    AnalyticsTotals:
+      type: object
+      required: [revenueCents, orders, avgOrderCents, visitors, pageViews, productViews]
+      properties:
+        revenueCents: { type: integer, format: int64, description: Total of orders that were not cancelled or refunded }
+        orders: { type: integer, format: int64, description: Orders placed (excluding cancelled and refunded) }
+        avgOrderCents: { type: integer, format: int64 }
+        visitors: { type: integer, format: int64, description: Sum of daily unique visitors (approximate) }
+        pageViews: { type: integer, format: int64 }
+        productViews: { type: integer, format: int64 }
+
+    AnalyticsDay:
+      type: object
+      required: [date, revenueCents, orders, visitors, pageViews]
+      properties:
+        date: { type: string, format: date, description: Day in the store's time zone }
+        revenueCents: { type: integer, format: int64 }
+        orders: { type: integer, format: int64 }
+        visitors: { type: integer, format: int64 }
+        pageViews: { type: integer, format: int64 }
+
+    AnalyticsProduct:
+      type: object
+      required: [productId, name, unitsSold, revenueCents, views]
+      properties:
+        productId: { $ref: '#/components/schemas/ObjectID' }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        imageUrl: { type: string }
+        unitsSold: { type: integer, format: int64 }
+        revenueCents: { type: integer, format: int64 }
+        views: { type: integer, format: int64 }
+
+    AnalyticsCount:
+      type: object
+      required: [key, count]
+      properties:
+        key: { type: string, description: 'Path, referrer host, device type or ISO country code' }
+        count: { type: integer, format: int64 }
+
+    AnalyticsReport:
+      type: object
+      required: [from, to, timezone, totals, previous, daily, ordersByStatus, topSelling, topViewed, pages, referrers, devices, countries]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        timezone: { type: string, example: America/Vancouver }
+        totals: { $ref: '#/components/schemas/AnalyticsTotals' }
+        previous: { $ref: '#/components/schemas/AnalyticsTotals', description: Same-length period immediately before }
+        daily: { type: array, items: { $ref: '#/components/schemas/AnalyticsDay' } }
+        ordersByStatus:
+          type: array
+          items:
+            type: object
+            required: [status, count]
+            properties:
+              status: { $ref: '#/components/schemas/OrderStatus' }
+              count: { type: integer, format: int64 }
+        topSelling: { type: array, items: { $ref: '#/components/schemas/AnalyticsProduct' } }
+        topViewed: { type: array, items: { $ref: '#/components/schemas/AnalyticsProduct' } }
+        pages: { type: array, items: { $ref: '#/components/schemas/AnalyticsCount' } }
+        referrers: { type: array, items: { $ref: '#/components/schemas/AnalyticsCount' } }
+        devices: { type: array, items: { $ref: '#/components/schemas/AnalyticsCount' } }
+        countries: { type: array, items: { $ref: '#/components/schemas/AnalyticsCount' } }
+
 paths:
   /healthz:
     get:
@@ -471,6 +543,22 @@ paths:
       responses:
         '204': { description: Recorded or deduplicated }
         '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+
+  /v1/events/pageview:
+    post:
+      tags: [public]
+      summary: Record a storefront page view (first-party, cookieless; rate limited)
+      description: |
+        No cookies or IP addresses are stored. Unique visitors are counted with a daily-rotating
+        keyed hash held only in Redis. Requests with `DNT: 1` or `Sec-GPC: 1`, and known bots, are
+        accepted but not counted.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PageViewInput' } } }
+      responses:
+        '204': { description: Recorded (or ignored) }
+        '422': { $ref: '#/components/responses/Problem' }
         '429': { $ref: '#/components/responses/Problem' }
 
   /v1/store-info:
@@ -888,6 +976,25 @@ paths:
       parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
       responses:
         '204': { description: Deleted }
+
+  /v1/admin/analytics:
+    get:
+      tags: [admin]
+      security: [{ clerk: [] }]
+      summary: Sales and traffic report for the last N days (orders:read)
+      parameters:
+        - { name: days, in: query, schema: { type: integer, enum: [7, 30, 90], default: 30 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/AnalyticsReport' }
+        '403': { $ref: '#/components/responses/Problem' }
 
   /v1/admin/audit:
     get:
