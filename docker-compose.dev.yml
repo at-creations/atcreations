@@ -1,4 +1,4 @@
-# Local development stack: MongoDB + Redis + API + storefront + admin, with live reload.
+# Local development stack: MongoDB + Redis + RustFS (S3) + API + storefront + admin, with live reload.
 #
 #   pnpm dev:stack            # = docker compose -f docker-compose.dev.yml up --build --watch
 #   pnpm dev:stack:down       # stop (add -v to also wipe the dev database)
@@ -10,7 +10,7 @@
 # for local development only; production uses deploy/docker-compose.yml.
 #
 # Host ports can be changed with API_PORT, STOREFRONT_PORT, ADMIN_PORT,
-# MONGO_PORT, REDIS_PORT (e.g. in a root .env file) if something else already uses them.
+# MONGO_PORT, REDIS_PORT, S3_PORT, S3_CONSOLE_PORT (e.g. in a root .env file) if something else already uses them.
 #
 # Public hostnames via Cloudflare Tunnel (optional):
 #   bash docker/dev/cloudflared/setup.sh   # once: tunnel, DNS routes, config, .env
@@ -47,6 +47,42 @@ services:
       interval: 5s
       retries: 20
 
+  # S3-compatible object storage standing in for Cloudflare R2 in development.
+  # Console: http://localhost:9001 (atcreations-dev / dev-rustfs-secret-key).
+  rustfs:
+    image: rustfs/rustfs:1.0.3
+    environment:
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: http://localhost:${S3_CONSOLE_PORT:-9001}
+      RUSTFS_REGION: us-east-1
+      RUSTFS_ACCESS_KEY: atcreations-dev
+      RUSTFS_SECRET_KEY: dev-rustfs-secret-key
+    ports:
+      - "127.0.0.1:${S3_PORT:-9000}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001"
+    volumes: [rustfs_dev:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      retries: 20
+
+  # One-shot: create the bucket and its public-read policy for images.
+  rustfs-init:
+    image: amazon/aws-cli:2.38.4
+    entrypoint: ["/bin/sh", "/rustfs-init.sh"]
+    environment:
+      S3_ENDPOINT: http://rustfs:9000
+      BUCKET: atcreations-dev
+      AWS_ACCESS_KEY_ID: atcreations-dev
+      AWS_SECRET_ACCESS_KEY: dev-rustfs-secret-key
+      AWS_DEFAULT_REGION: us-east-1
+    volumes: ["./docker/dev/rustfs-init.sh:/rustfs-init.sh:ro"]
+    depends_on:
+      rustfs: { condition: service_healthy }
+    restart: "no"
+
   api:
     build: { context: ./apps/api }
     env_file:
@@ -72,6 +108,7 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
+      rustfs-init: { condition: service_completed_successfully }
     develop:
       watch:
         # Go builds in seconds: rebuild and restart the container on change.
@@ -91,6 +128,7 @@ services:
       API_INTERNAL_URL: http://api:8080
       VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
       PUBLIC_ASSET_BASE_URL: ${PUBLIC_ASSET_BASE_URL:-https://cdn.atcreations.ca/site}
+      CSP_IMG_ORIGINS: http://localhost:${S3_PORT:-9000} # product images from RustFS
     ports: ["127.0.0.1:${STOREFRONT_PORT:-5173}:5173"]
     depends_on:
       api: { condition: service_healthy }
@@ -124,6 +162,7 @@ services:
       PUBLIC_API_URL: ${DEV_API_URL:-http://localhost:${API_PORT:-8080}}
       PUBLIC_STOREFRONT_URL: ${DEV_STOREFRONT_URL:-http://localhost:${STOREFRONT_PORT:-5173}}
       VITE_ALLOWED_HOSTS: ${DEV_TUNNEL_HOSTS:-}
+      CSP_IMG_ORIGINS: http://localhost:${S3_PORT:-9000} # product images from RustFS
     ports: ["127.0.0.1:${ADMIN_PORT:-5174}:5173"]
     depends_on:
       api: { condition: service_healthy }
@@ -170,3 +209,4 @@ services:
 
 volumes:
   mongo_dev:
+  rustfs_dev:

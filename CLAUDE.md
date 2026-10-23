@@ -16,7 +16,7 @@ Storefront (catalogue) + admin dashboard + API for AT Creations. Read `docs/ARCH
 
 ```bash
 pnpm install                     # JS deps (pnpm workspace)
-pnpm dev:stack                   # whole dev stack in Docker with live reload
+pnpm dev:stack                   # whole dev stack in Docker with live reload (S3 = local RustFS)
 pnpm dev:stack:tunnel            # same + Cloudflare Tunnel on dev*.atcreations.ca (setup: docker/dev/cloudflared/setup.sh)
 docker compose -f docker-compose.dev.yml up -d mongo redis   # only the databases
 cd apps/api && go run ./cmd/api  # API on :8080 (needs apps/api/.env)

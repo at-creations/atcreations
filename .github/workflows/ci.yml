@@ -31,18 +31,22 @@ jobs:
       - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
       - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Start MongoDB replica set and Redis for integration tests
+      - name: Start MongoDB replica set, Redis and RustFS for integration tests
         run: |
           docker run -d --name redis -p 127.0.0.1:6379:6379 redis:8.2-alpine redis-server --requirepass ci-redis --save ""
+          docker run -d --name rustfs -p 127.0.0.1:9000:9000 -e RUSTFS_ACCESS_KEY=atcreations-dev -e RUSTFS_SECRET_KEY=dev-rustfs-secret-key -e RUSTFS_REGION=us-east-1 rustfs/rustfs:1.0.3
           docker run -d --name mongo -p 127.0.0.1:27017:27017 mongo:8.0 --replSet rs0 --bind_ip_all
           for i in $(seq 1 30); do
             docker exec mongo mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}).ok }" && break
             sleep 2
           done
+          until curl -fsS http://127.0.0.1:9000/health >/dev/null; do sleep 1; done
+          docker run --rm --network host -v "$PWD/../../docker/dev/rustfs-init.sh:/rustfs-init.sh:ro"             -e S3_ENDPOINT=http://127.0.0.1:9000 -e BUCKET=atcreations-dev             -e AWS_ACCESS_KEY_ID=atcreations-dev -e AWS_SECRET_ACCESS_KEY=dev-rustfs-secret-key -e AWS_DEFAULT_REGION=us-east-1             --entrypoint /bin/sh amazon/aws-cli:2.38.4 /rustfs-init.sh
       - name: Integration tests
-        run: go test -race -tags integration ./internal/ ./internal/platform/redisx/
+        run: go test -race -tags integration ./internal/ ./internal/platform/redisx/ ./internal/media/
         env:
           REDIS_TEST_URL: redis://:ci-redis@127.0.0.1:6379/15
+          S3_TEST_ENDPOINT: http://127.0.0.1:9000
           MONGO_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
