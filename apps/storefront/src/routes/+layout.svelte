@@ -3,9 +3,17 @@
 	import { m } from '$lib/paraglide/messages';
 	import Header from '$lib/components/Header.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { trackPageView } from '$lib/analytics';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
+
+	// One page view per navigation. The external referrer only applies to the first page.
+	afterNavigate(({ from, to }) => {
+		if (!to?.url || from?.url.pathname === to.url.pathname) return;
+		trackPageView(data.config.publicApiUrl, to.url.pathname, from ? '' : document.referrer);
+	});
 </script>
 
 <a
