@@ -12,15 +12,15 @@
 		<li
 			class={[
 				'rounded-lg border p-3 text-sm',
-				highlight === role ? 'border-brand-600 bg-brand-50' : 'border-slate-200'
+				highlight === role ? 'border-brand-300 bg-brand-50' : 'border-zinc-200'
 			]}
 		>
 			<p class="font-semibold">{roleLabel(role)}</p>
-			<p class="text-xs text-slate-600">{roleSummary(role)}</p>
+			<p class="text-xs text-zinc-600">{roleSummary(role)}</p>
 			{#if highlight === role}
 				<ul class="mt-2 grid gap-1 sm:grid-cols-2">
 					{#each permissionsForRole(role) as permission (permission)}
-						<li class="flex items-center gap-1 text-xs text-slate-700">
+						<li class="flex items-center gap-1 text-xs text-zinc-700">
 							<Icon name="check" size={12} class="text-emerald-600" />{permissionLabel(permission)}
 						</li>
 					{/each}

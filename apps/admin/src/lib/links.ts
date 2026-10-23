@@ -22,3 +22,15 @@ export function safeImageUrl(url: string | null | undefined): string | undefined
 		return undefined;
 	}
 }
+
+/** Public storefront home page (for "View store"). Returns null when unset/invalid. */
+export function storefrontUrl(): string | null {
+	const base = env.PUBLIC_STOREFRONT_URL;
+	if (!base) return null;
+	try {
+		const url = new URL('/', base);
+		return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+	} catch {
+		return null;
+	}
+}

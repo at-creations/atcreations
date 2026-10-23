@@ -32,7 +32,7 @@
 </script>
 
 <div>
-	<div role="tablist" tabindex="-1" class="mb-4 flex gap-1 border-b border-slate-200" {onkeydown}>
+	<div role="tablist" tabindex="-1" class="mb-4 flex gap-1 border-b border-zinc-200" {onkeydown}>
 		{#each langs as lang (lang)}
 			<button
 				bind:this={tabs[lang]}
@@ -45,8 +45,8 @@
 				class={[
 					'-mb-px border-b-2 px-4 py-2 text-sm font-medium',
 					active === lang
-						? 'border-brand-800 text-brand-800'
-						: 'border-transparent text-slate-500 hover:text-slate-800',
+						? 'border-brand-400 text-brand-800'
+						: 'border-transparent text-zinc-500 hover:text-zinc-800',
 					errors[lang] && 'text-red-600'
 				]}
 				onclick={() => (active = lang)}

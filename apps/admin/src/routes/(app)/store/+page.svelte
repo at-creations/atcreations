@@ -121,9 +121,7 @@
 <RequirePermission permission="store:write">
 	<PageHeader
 		title={m.store_title()}
-		subtitle={info
-			? m.store_last_updated({ date: formatDateTime(info.updatedAt) })
-			: m.store_subtitle()}
+		subtitle={info ? m.store_last_updated({ date: formatDateTime(info.updatedAt) }) : undefined}
 	/>
 	{#if infoQuery.isPending}
 		<LoadState loading />
@@ -136,7 +134,7 @@
 	{:else}
 		<form class="space-y-6" onsubmit={submit} novalidate>
 			<fieldset class="space-y-4 card p-5" disabled={saving} aria-labelledby="{uid}-contact">
-				<h2 id="{uid}-contact" class="text-lg font-semibold">{m.store_contact()}</h2>
+				<h2 id="{uid}-contact" class="card-title">{m.store_contact()}</h2>
 				<div class="grid gap-4 md:grid-cols-2">
 					<Field label={m.store_email()} error={errors.email}>
 						{#snippet children(control)}
@@ -183,8 +181,8 @@
 			</fieldset>
 
 			<fieldset class="card p-5" disabled={saving} aria-labelledby="{uid}-hours">
-				<h2 id="{uid}-hours" class="mb-4 text-lg font-semibold">{m.store_hours()}</h2>
-				<ul class="divide-y divide-slate-100">
+				<h2 id="{uid}-hours" class="mb-4 card-title">{m.store_hours()}</h2>
+				<ul class="divide-y divide-zinc-100">
 					{#each hours as day, i (day.day)}
 						{@const error = hourErrors[i]}
 						<li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
@@ -192,14 +190,14 @@
 							<label class="inline-flex items-center gap-2 text-sm">
 								<input
 									type="checkbox"
-									class="size-4 rounded border-slate-300"
+									class="size-4 rounded border-zinc-300"
 									bind:checked={day.closed}
 								/>
 								{m.store_closed()}
 							</label>
 							{#if !day.closed}
 								<label class="flex items-center gap-2 text-sm">
-									<span class="text-slate-600">{m.store_open_time()}</span>
+									<span class="text-zinc-600">{m.store_open_time()}</span>
 									<input
 										type="time"
 										class="input w-auto"
@@ -209,7 +207,7 @@
 									/>
 								</label>
 								<label class="flex items-center gap-2 text-sm">
-									<span class="text-slate-600">{m.store_close_time()}</span>
+									<span class="text-zinc-600">{m.store_close_time()}</span>
 									<input
 										type="time"
 										class="input w-auto"

@@ -132,7 +132,7 @@
 						{/snippet}
 					</Field>
 				{:else}
-					<p class="text-xs text-slate-500">{m.vietnamese_note()}</p>
+					<p class="text-xs text-zinc-500">{m.vietnamese_note()}</p>
 					<Field label={m.cat_name()} optional error={errors['name.vi']}>
 						{#snippet children(control)}
 							<input

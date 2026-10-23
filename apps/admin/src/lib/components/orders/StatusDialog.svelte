@@ -92,7 +92,7 @@
 			{/snippet}
 		</Field>
 		<label class="inline-flex items-center gap-2 text-sm">
-			<input type="checkbox" class="size-4 rounded border-slate-300" bind:checked={notify} />
+			<input type="checkbox" class="size-4 rounded border-zinc-300" bind:checked={notify} />
 			{m.od_notify()}
 		</label>
 	</form>

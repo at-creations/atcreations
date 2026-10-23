@@ -45,4 +45,4 @@
 	});
 </script>
 
-<Badge tone={view.tone}>{view.label}</Badge>
+<Badge tone={view.tone} dot>{view.label}</Badge>

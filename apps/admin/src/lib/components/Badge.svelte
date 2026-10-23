@@ -5,18 +5,25 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { tone = 'gray', children }: { tone?: BadgeTone; children: Snippet } = $props();
+	let {
+		tone = 'gray',
+		dot = false,
+		children
+	}: { tone?: BadgeTone; dot?: boolean; children: Snippet } = $props();
 
 	const tones: Record<BadgeTone, string> = {
-		gray: 'bg-slate-100 text-slate-700',
+		gray: 'bg-zinc-100 text-zinc-600',
 		green: 'bg-emerald-100 text-emerald-800',
 		amber: 'bg-amber-100 text-amber-800',
-		red: 'bg-red-100 text-red-800',
-		blue: 'bg-blue-100 text-blue-800',
-		indigo: 'bg-indigo-100 text-indigo-800',
-		purple: 'bg-purple-100 text-purple-800',
-		sky: 'bg-sky-100 text-sky-800'
+		red: 'bg-rose-100 text-rose-800',
+		blue: 'bg-sky-100 text-sky-800',
+		indigo: 'bg-brand-100 text-brand-800',
+		purple: 'bg-fuchsia-100 text-fuchsia-800',
+		sky: 'bg-cyan-100 text-cyan-800'
 	};
 </script>
 
-<span class={['badge', tones[tone]]}>{@render children()}</span>
+<span class={['badge', tones[tone]]}>
+	{#if dot}<span class="size-1.5 rounded-full bg-current" aria-hidden="true"></span>{/if}
+	{@render children()}
+</span>

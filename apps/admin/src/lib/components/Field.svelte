@@ -44,12 +44,12 @@
 	<label class="label" for={id}>
 		{label}
 		{#if required}<span class="text-red-600" aria-hidden="true">*</span>{/if}
-		{#if optional}<span class="text-xs font-normal text-slate-500">({m.common_optional()})</span
+		{#if optional}<span class="text-xs font-normal text-zinc-500">({m.common_optional()})</span
 			>{/if}
 	</label>
 	{@render children(control)}
 	{#if hint}
-		<p id="{id}-hint" class="mt-1 text-xs text-slate-500">{hint}</p>
+		<p id="{id}-hint" class="mt-1 text-xs text-zinc-500">{hint}</p>
 	{/if}
 	{#if error}
 		<p id="{id}-error" class="mt-1 text-xs font-medium text-red-600">{error}</p>

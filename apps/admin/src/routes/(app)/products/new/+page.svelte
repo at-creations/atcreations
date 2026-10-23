@@ -14,21 +14,20 @@
 </script>
 
 <RequirePermission permission="products:write">
-	<a
-		href={resolve('/products')}
-		class="mb-4 inline-flex items-center gap-1 text-sm text-slate-600 hover:underline"
-	>
-		<Icon name="left" size={16} />{m.nav_products()}
-	</a>
-	<PageHeader title={m.pf_title_add()} />
+	<PageHeader
+		title={m.pf_title_add()}
+		back={{ href: resolve('/products'), label: m.nav_products() }}
+	/>
 	{#if categories.isPending}
 		<LoadState loading />
 	{:else if categories.isError && !categories.data}
-		<LoadState
-			error={categories.error}
-			fallback={m.cat_load_failed()}
-			onretry={() => categories.refetch()}
-		/>
+		<div class="card">
+			<LoadState
+				error={categories.error}
+				fallback={m.cat_load_failed()}
+				onretry={() => categories.refetch()}
+			/>
+		</div>
 	{:else}
 		<ProductForm
 			categories={categories.data ?? []}
@@ -36,10 +35,20 @@
 				// Step 2: continue to the edit page where images can be uploaded (already cached).
 				await goto(resolve(`/products/${product.id}`), { replaceState: true });
 			}}
-		/>
-		<p class="mt-6 flex items-center gap-2 rounded-lg bg-sky-50 p-4 text-sm text-sky-900">
-			<Icon name="info" />
-			{m.pf_images_after_save()}
-		</p>
+		>
+			{#snippet media()}
+				<section class="card">
+					<div class="card-header">
+						<h2 class="card-title">{m.img_title()}</h2>
+					</div>
+					<div
+						class="m-5 flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-zinc-200 px-6 py-10 text-center"
+					>
+						<Icon name="image" size={24} class="text-zinc-300" />
+						<p class="text-sm text-zinc-500">{m.pf_images_after_save()}</p>
+					</div>
+				</section>
+			{/snippet}
+		</ProductForm>
 	{/if}
 </RequirePermission>

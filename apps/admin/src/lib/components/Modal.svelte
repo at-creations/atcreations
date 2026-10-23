@@ -60,7 +60,7 @@
 	aria-labelledby="{uid}-title"
 	aria-describedby={description ? `${uid}-desc` : undefined}
 	class={[
-		'm-auto w-[calc(100%-2rem)] rounded-xl bg-white p-0 text-slate-900 shadow-2xl',
+		'm-auto w-[calc(100%-2rem)] rounded-xl bg-white p-0 text-zinc-900 shadow-2xl',
 		widths[size]
 	]}
 	oncancel={(event) => {
@@ -71,16 +71,16 @@
 >
 	{#if open}
 		<div class="flex max-h-[85vh] flex-col">
-			<header class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+			<header class="flex items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4">
 				<div>
 					<h2 id="{uid}-title" class="text-lg font-semibold">{title}</h2>
 					{#if description}
-						<p id="{uid}-desc" class="mt-1 text-sm text-slate-600">{description}</p>
+						<p id="{uid}-desc" class="mt-1 text-sm text-zinc-600">{description}</p>
 					{/if}
 				</div>
 				<button
 					type="button"
-					class="-mr-2 btn-ghost btn-sm"
+					class="btn-ghost -mr-2 btn-sm"
 					aria-label={m.common_close()}
 					disabled={busy}
 					onclick={requestClose}
@@ -93,7 +93,7 @@
 			</div>
 			{#if footer}
 				<footer
-					class="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3"
+					class="flex flex-wrap justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-5 py-3"
 				>
 					{@render footer()}
 				</footer>

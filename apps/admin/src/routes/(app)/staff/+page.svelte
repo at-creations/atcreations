@@ -89,6 +89,19 @@
 		inviteOpen = true;
 	}
 
+	// "Invite staff" from the command menu or dashboard links here with ?invite=1.
+	$effect(() => {
+		if (!page.url.searchParams.has('invite') || !inviteDialog) return;
+		void openInvite();
+		// Drop the flag so a reload or Back does not reopen the dialog.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same page, query only
+		void goto(withParams(page.url, { invite: null }), {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	});
+
 	async function openRole(member: StaffMember) {
 		roleMember = member;
 		await tick();
@@ -207,35 +220,34 @@
 {/snippet}
 
 <RequirePermission permission="staff:manage">
-	<PageHeader title={m.staff_title()}>
+	<PageHeader title={m.nav_staff()}>
 		{#snippet actions()}
 			<button type="button" class="btn-primary" onclick={openInvite}>
-				<Icon name="plus" />{m.staff_invite()}
+				<Icon name="plus" size={16} />{m.staff_invite()}
 			</button>
 		{/snippet}
 	</PageHeader>
 
-	<div class="mb-4 card p-4">
-		<div class="relative max-w-md">
-			<label for="{uid}-q" class="sr-only">{m.common_search()}</label>
-			<Icon
-				name="search"
-				size={16}
-				class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400"
-			/>
-			<input
-				id="{uid}-q"
-				type="search"
-				class="input pl-9"
-				maxlength="100"
-				placeholder={m.staff_search_placeholder()}
-				value={searchInput}
-				oninput={(e) => onSearch(e.currentTarget.value)}
-			/>
-		</div>
-	</div>
-
 	<section class="overflow-hidden card" aria-busy={staffQuery.isFetching}>
+		<div class="border-b border-zinc-200 p-3">
+			<div class="relative max-w-md">
+				<label for="{uid}-q" class="sr-only">{m.common_search()}</label>
+				<Icon
+					name="search"
+					size={16}
+					class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-400"
+				/>
+				<input
+					id="{uid}-q"
+					type="search"
+					class="input pl-9"
+					maxlength="100"
+					placeholder={m.staff_search_placeholder()}
+					value={searchInput}
+					oninput={(e) => onSearch(e.currentTarget.value)}
+				/>
+			</div>
+		</div>
 		{#if showError}
 			<LoadState
 				error={staffQuery.error}
@@ -245,7 +257,7 @@
 		{:else if staffQuery.isPending}
 			<LoadState loading />
 		{:else if staff.length === 0}
-			<p class="p-10 text-center text-slate-500">{m.staff_none()}</p>
+			<p class="p-10 text-center text-zinc-500">{m.staff_none()}</p>
 		{:else}
 			<table
 				class={[
@@ -253,19 +265,19 @@
 					staffQuery.isPlaceholderData && 'opacity-60'
 				]}
 			>
-				<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+				<thead class="border-b border-zinc-200 bg-zinc-50/80">
 					<tr>
-						<th scope="col" class="px-4 py-3">{m.staff_col_name()}</th>
-						<th scope="col" class="px-4 py-3">{m.staff_col_role()}</th>
-						<th scope="col" class="px-4 py-3">{m.staff_col_status()}</th>
-						<th scope="col" class="px-4 py-3">{m.staff_col_last_sign_in()}</th>
-						<th scope="col" class="px-4 py-3 text-right">{m.common_actions()}</th>
+						<th scope="col" class="th">{m.staff_col_name()}</th>
+						<th scope="col" class="th">{m.staff_col_role()}</th>
+						<th scope="col" class="th">{m.staff_col_status()}</th>
+						<th scope="col" class="th">{m.staff_col_last_sign_in()}</th>
+						<th scope="col" class="th text-right">{m.common_actions()}</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-slate-100">
+				<tbody class="divide-y divide-zinc-100">
 					{#each staff as member (member.id)}
-						<tr class={['hover:bg-slate-50', isSelf(member) && 'bg-brand-50/40']}>
-							<td class="px-4 py-3">
+						<tr class={['hover:bg-zinc-50', isSelf(member) && 'bg-brand-50/40']}>
+							<td class="td">
 								<div class="flex items-center gap-3">
 									{@render avatar(member)}
 									<div class="min-w-0">
@@ -275,31 +287,28 @@
 													>{m.staff_you()}</span
 												>{/if}
 										</p>
-										<p class="truncate text-xs text-slate-500">{member.email}</p>
+										<p class="truncate text-xs text-zinc-500">{member.email}</p>
 									</div>
 								</div>
 							</td>
-							<td class="px-4 py-3"><StatusBadge kind="role" value={member.role} /></td>
-							<td class="px-4 py-3">
+							<td class="td"><StatusBadge kind="role" value={member.role} /></td>
+							<td class="td">
 								{#if member.banned}
 									<span class="badge bg-red-100 text-red-800">{m.staff_banned()}</span>
 								{:else}
 									<span class="badge bg-emerald-100 text-emerald-800">{m.staff_active()}</span>
 								{/if}
 							</td>
-							<td class="px-4 py-3 text-slate-600">
+							<td class="td text-zinc-600">
 								{member.lastSignInAt ? formatDateTime(member.lastSignInAt) : m.staff_never()}
 							</td>
-							<td class="px-4 py-3">{@render rowActions(member)}</td>
+							<td class="td">{@render rowActions(member)}</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 			<ul
-				class={[
-					'divide-y divide-slate-100 lg:hidden',
-					staffQuery.isPlaceholderData && 'opacity-60'
-				]}
+				class={['divide-y divide-zinc-100 lg:hidden', staffQuery.isPlaceholderData && 'opacity-60']}
 			>
 				{#each staff as member (member.id)}
 					<li class="space-y-2 p-4">
@@ -307,11 +316,11 @@
 							{@render avatar(member)}
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-medium">{member.name || member.email}</p>
-								<p class="truncate text-xs text-slate-500">{member.email}</p>
+								<p class="truncate text-xs text-zinc-500">{member.email}</p>
 							</div>
 							<StatusBadge kind="role" value={member.role} />
 						</div>
-						<p class="text-xs text-slate-500">
+						<p class="text-xs text-zinc-500">
 							{member.banned ? m.staff_banned() : m.staff_active()} · {m.staff_col_last_sign_in()}:
 							{member.lastSignInAt ? formatDateTime(member.lastSignInAt) : m.staff_never()}
 						</p>
@@ -331,7 +340,7 @@
 	</section>
 
 	<section class="mt-6 card" aria-labelledby="{uid}-pending">
-		<h2 id="{uid}-pending" class="border-b border-slate-200 px-5 py-3 font-semibold">
+		<h2 id="{uid}-pending" class="border-b border-zinc-100 px-5 py-3.5 card-title">
 			{m.staff_pending_title()}
 		</h2>
 		{#if invitationsList.isPending}
@@ -343,15 +352,15 @@
 				onretry={() => invitationsList.refetch()}
 			/>
 		{:else if !invitationsList.data || invitationsList.data.length === 0}
-			<p class="p-5 text-sm text-slate-500">{m.staff_pending_none()}</p>
+			<p class="p-5 text-sm text-zinc-500">{m.staff_pending_none()}</p>
 		{:else}
-			<ul class="divide-y divide-slate-100">
+			<ul class="divide-y divide-zinc-100">
 				{#each invitationsList.data as invitation (invitation.id)}
 					<li class="flex flex-wrap items-center gap-3 px-5 py-3">
-						<Icon name="mail" class="text-slate-400" />
+						<Icon name="mail" class="text-zinc-400" />
 						<span class="min-w-0 flex-1 truncate text-sm font-medium">{invitation.email}</span>
 						<StatusBadge kind="role" value={invitation.role} />
-						<span class="text-xs text-slate-500"
+						<span class="text-xs text-zinc-500"
 							>{m.staff_invited_on({ date: formatDate(invitation.createdAt) })}</span
 						>
 						<button

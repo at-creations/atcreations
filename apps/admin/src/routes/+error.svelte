@@ -19,9 +19,9 @@
 
 <main class="flex min-h-screen items-center justify-center p-4">
 	<div class="w-full max-w-md card p-8 text-center">
-		<p class="text-5xl font-bold text-brand-800">{page.status}</p>
+		<p class="text-5xl font-bold text-brand-400">{page.status}</p>
 		<h1 class="mt-4 text-xl font-semibold">{title}</h1>
-		<p class="mt-2 text-sm text-slate-600">{body}</p>
-		<a class="mt-6 btn-primary" href={resolve('/')}>{m.error_back_home()}</a>
+		<p class="mt-2 text-sm text-zinc-600">{body}</p>
+		<a class="btn-primary mt-6" href={resolve('/')}>{m.error_back_home()}</a>
 	</div>
 </main>

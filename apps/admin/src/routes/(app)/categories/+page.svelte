@@ -3,6 +3,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { tick } from 'svelte';
 	import CategoryDialog from '$lib/components/categories/CategoryDialog.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -104,11 +105,11 @@
 	}
 </script>
 
-<PageHeader title={m.cat_title()}>
+<PageHeader title={m.nav_categories()}>
 	{#snippet actions()}
 		{#if canWrite}
 			<button type="button" class="btn-primary" onclick={() => openDialog(null)}>
-				<Icon name="plus" />{m.cat_add()}
+				<Icon name="plus" size={16} />{m.cat_add()}
 			</button>
 		{/if}
 	{/snippet}
@@ -125,14 +126,16 @@
 		/>
 	</div>
 {:else if sorted.length === 0}
-	<p class="card p-10 text-center text-slate-500">{m.cat_none()}</p>
+	<div class="card">
+		<EmptyState icon="tag" title={m.cat_none()} />
+	</div>
 {:else}
 	<ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 		{#each sorted as category (category.id)}
 			{@const src = safeImageUrl(category.image?.url)}
 			{@const busy = busyImage === category.id}
 			<li class="flex flex-col overflow-hidden card">
-				<div class="relative aspect-[16/9] bg-slate-100">
+				<div class="relative aspect-[16/9] bg-zinc-100">
 					{#if src}
 						<img
 							{src}
@@ -141,12 +144,12 @@
 							loading="lazy"
 						/>
 					{:else}
-						<div class="flex h-full flex-col items-center justify-center gap-1 text-slate-400">
+						<div class="flex h-full flex-col items-center justify-center gap-1 text-zinc-400">
 							<Icon name="image" size={28} />
 							<span class="text-xs">{m.cat_no_image()}</span>
 						</div>
 					{/if}
-					<span class="absolute top-2 left-2 badge bg-white/90 text-slate-700"
+					<span class="absolute top-2 left-2 badge bg-white/90 text-zinc-700"
 						>{m.cat_order_label({ order: category.sortOrder })}</span
 					>
 					{#if busy}
@@ -160,21 +163,21 @@
 				</div>
 				<div class="flex flex-1 flex-col gap-2 p-4">
 					<div>
-						<h2 class="font-semibold">{category.name.en}</h2>
-						{#if category.name.vi}<p class="text-sm text-slate-600" lang="vi">
+						<h2 class="text-sm font-semibold text-zinc-900">{category.name.en}</h2>
+						{#if category.name.vi}<p class="text-sm text-zinc-600" lang="vi">
 								{category.name.vi}
 							</p>{/if}
-						<p class="font-mono text-xs text-slate-400">{category.slug}</p>
+						<p class="font-mono text-xs text-zinc-400">{category.slug}</p>
 					</div>
-					<p class="line-clamp-3 text-sm text-slate-700">{category.description.en}</p>
-					<p class="line-clamp-3 text-sm text-slate-500" lang="vi">
+					<p class="line-clamp-3 text-sm text-zinc-700">{category.description.en}</p>
+					<p class="line-clamp-3 text-sm text-zinc-500" lang="vi">
 						{category.description.vi || m.cat_no_vi()}
 					</p>
 					{#if canWrite}
-						<div class="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+						<div class="mt-auto flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
 							<label
 								class={[
-									'btn-secondary cursor-pointer btn-sm focus-within:ring-2 focus-within:ring-brand-600',
+									'btn-secondary btn-sm cursor-pointer focus-within:ring-2 focus-within:ring-brand-600',
 									busy && 'pointer-events-none opacity-50'
 								]}
 							>

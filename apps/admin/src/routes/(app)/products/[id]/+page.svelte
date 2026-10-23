@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -13,9 +14,6 @@
 	import { storefrontProductUrl } from '$lib/links';
 	import { m } from '$lib/paraglide/messages.js';
 	import { categoriesQuery, productDetailQuery } from '$lib/queries';
-	import { getAdminSession } from '$lib/state/session.svelte';
-
-	const session = getAdminSession();
 	const id = $derived(page.params.id ?? '');
 
 	// The cache holds the server's latest product (and `version`): saves and image operations
@@ -42,29 +40,33 @@
 	);
 </script>
 
-<a
-	href={resolve('/products')}
-	class="mb-4 inline-flex items-center gap-1 text-sm text-slate-600 hover:underline"
->
-	<Icon name="left" size={16} />{m.nav_products()}
-</a>
-
 {#if notFound}
-	<div class="card p-10 text-center">
-		<p class="font-medium">{m.pf_not_found()}</p>
-		<a class="mt-4 btn-secondary" href={resolve('/products')}>{m.common_back()}</a>
+	<div class="card">
+		<EmptyState icon="box" title={m.pf_not_found()}>
+			<a class="btn-secondary" href={resolve('/products')}
+				><Icon name="left" size={16} />{m.nav_products()}</a
+			>
+		</EmptyState>
 	</div>
 {:else if loadError}
-	<LoadState error={loadError} onretry={retry} />
+	<div class="card"><LoadState error={loadError} onretry={retry} /></div>
 {:else if !product || !categoriesList.data}
-	<LoadState loading />
+	<div class="space-y-6" role="status" aria-label={m.common_loading()}>
+		<div class="h-8 w-64 animate-pulse rounded-md bg-zinc-200"></div>
+		<div class="grid gap-6 lg:grid-cols-3">
+			<div class="h-96 animate-pulse card lg:col-span-2"></div>
+			<div class="h-64 animate-pulse card"></div>
+		</div>
+	</div>
 {:else}
 	<PageHeader
-		title={session.can('products:write') ? m.pf_title_edit() : localized(product.name)}
-		subtitle={localized(product.name)}
+		title={localized(product.name)}
+		back={{ href: resolve('/products'), label: m.nav_products() }}
 	>
-		{#snippet actions()}
+		{#snippet meta()}
 			<StatusBadge kind="product" value={product!.status} />
+		{/snippet}
+		{#snippet actions()}
 			{#if siteUrl}
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external storefront URL -->
 				<a class="btn-secondary" href={siteUrl} target="_blank" rel="noopener noreferrer">
@@ -73,10 +75,11 @@
 			{/if}
 		{/snippet}
 	</PageHeader>
-	<div class="grid gap-6">
-		{#key product.id}
-			<ProductForm {product} categories={categoriesList.data} />
-		{/key}
-		<ProductImages {product} />
-	</div>
+	{#key product.id}
+		<ProductForm {product} categories={categoriesList.data}>
+			{#snippet media()}
+				<ProductImages product={product!} />
+			{/snippet}
+		</ProductForm>
+	{/key}
 {/if}

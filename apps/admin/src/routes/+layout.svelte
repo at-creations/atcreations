@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { ClerkProvider } from 'svelte-clerk';
+	import { clerkAppearance, clerkLocalization } from '$lib/clerk-appearance';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
 	import Toaster from '$lib/components/Toaster.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -13,7 +14,13 @@
 	<title>{m.app_title()}</title>
 </svelte:head>
 
-<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" afterSignOutUrl="/sign-in">
+<ClerkProvider
+	signInUrl="/sign-in"
+	signUpUrl="/sign-up"
+	afterSignOutUrl="/sign-in"
+	appearance={clerkAppearance}
+	localization={clerkLocalization()}
+>
 	{@render children()}
 </ClerkProvider>
 

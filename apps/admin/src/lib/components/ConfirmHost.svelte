@@ -25,7 +25,7 @@
 				if (canConfirm) finish(true);
 			}}
 		>
-			<p class="text-sm break-words whitespace-pre-line text-slate-700">{request.message}</p>
+			<p class="text-sm break-words whitespace-pre-line text-zinc-700">{request.message}</p>
 			{#if request.warning}
 				<p
 					class="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900"

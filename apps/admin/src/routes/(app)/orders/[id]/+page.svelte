@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import LoadState from '$lib/components/LoadState.svelte';
 	import AddressDialog from '$lib/components/orders/AddressDialog.svelte';
@@ -49,6 +50,20 @@
 	let addressDialog = $state<ReturnType<typeof AddressDialog>>();
 
 	const nextStatuses = $derived(order ? allowedNextStatuses(order.status) : []);
+	/** The "happy path" next step, offered as the primary action. */
+	const primaryNext = $derived(
+		nextStatuses.find((s) => s !== 'cancelled' && s !== 'refunded') ?? null
+	);
+	/** Fulfilment steps shown in the progress tracker. */
+	const FLOW: readonly OrderStatus[] = [
+		'pending',
+		'confirmed',
+		'processing',
+		'shipped',
+		'delivered',
+		'completed'
+	];
+	const flowIndex = $derived(order ? FLOW.indexOf(order.status) : -1);
 	const canWrite = $derived(session.can('orders:write'));
 	const canShipping = $derived(session.can('orders:shipping'));
 	const shippingEditable = $derived(order ? isShippingEditable(order.status) : false);
@@ -101,68 +116,167 @@
 </script>
 
 <RequirePermission permission="orders:read">
-	<a
-		href={resolve('/orders')}
-		class="mb-4 inline-flex items-center gap-1 text-sm text-slate-600 hover:underline"
-	>
-		<Icon name="left" size={16} />{m.od_back()}
-	</a>
-
 	{#if notFound}
-		<p class="card p-10 text-center text-slate-600">{m.od_not_found()}</p>
+		<div class="card">
+			<EmptyState icon="inbox" title={m.od_not_found()}>
+				<a class="btn-secondary" href={resolve('/orders')}
+					><Icon name="left" size={16} />{m.od_back()}</a
+				>
+			</EmptyState>
+		</div>
 	{:else if loadError}
-		<LoadState error={loadError} onretry={() => orderQuery.refetch()} />
+		<div class="card"><LoadState error={loadError} onretry={() => orderQuery.refetch()} /></div>
 	{:else if !order}
-		<LoadState loading />
+		<div class="space-y-6" role="status" aria-label={m.common_loading()}>
+			<div class="h-8 w-56 animate-pulse rounded-md bg-zinc-200"></div>
+			<div class="grid gap-6 lg:grid-cols-3">
+				<div class="h-96 animate-pulse card lg:col-span-2"></div>
+				<div class="h-64 animate-pulse card"></div>
+			</div>
+		</div>
 	{:else}
 		<PageHeader
 			title={m.od_title({ number: order.number })}
 			subtitle={formatDateTime(order.createdAt)}
+			back={{ href: resolve('/orders'), label: m.od_back() }}
 		>
-			{#snippet actions()}
+			{#snippet meta()}
 				<StatusBadge kind="order" value={order!.status} />
+			{/snippet}
+			{#snippet actions()}
+				{#if canWrite}
+					{#each nextStatuses as next (next)}
+						{@const danger = next === 'cancelled' || next === 'refunded'}
+						<button
+							type="button"
+							class={danger
+								? 'btn-secondary text-red-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700'
+								: next === primaryNext
+									? 'btn-primary'
+									: 'btn-secondary'}
+							onclick={() => openStatus(next)}
+						>
+							{#if !danger && next === primaryNext}<Icon name="check" size={16} />{/if}
+							{m.od_mark_as({ status: orderStatusLabel(next) })}
+						</button>
+					{/each}
+				{/if}
 			{/snippet}
 		</PageHeader>
 
-		<div class="grid gap-6 lg:grid-cols-3">
-			<div class="space-y-6 lg:col-span-2">
+		<div class="grid items-start gap-6 lg:grid-cols-3">
+			<div class="min-w-0 space-y-6 lg:col-span-2">
+				<!-- Progress -->
+				<section class="card p-5" aria-label={m.od_progress()}>
+					{#if order.status === 'cancelled' || order.status === 'refunded'}
+						<p class="flex items-center gap-3 text-sm">
+							<span
+								class="flex size-8 items-center justify-center rounded-full bg-red-50 text-red-600"
+							>
+								<Icon name="ban" size={16} />
+							</span>
+							<span class="font-medium text-zinc-900"
+								>{m.od_closed({ status: orderStatusLabel(order.status) })}</span
+							>
+						</p>
+					{:else}
+						<ol class="flex items-center">
+							{#each FLOW as step, i (step)}
+								{@const done = i <= flowIndex}
+								<li class={['flex items-center', i < FLOW.length - 1 && 'flex-1']}>
+									<span class="flex flex-col items-center gap-1.5">
+										<span
+											class={[
+												'flex size-7 items-center justify-center rounded-full text-xs font-semibold',
+												done
+													? 'bg-brand-200 text-brand-900'
+													: 'bg-white text-zinc-400 ring-1 ring-zinc-300'
+											]}
+											aria-current={i === flowIndex ? 'step' : undefined}
+										>
+											{#if i < flowIndex}<Icon name="check" size={14} />{:else}{i + 1}{/if}
+										</span>
+										<span
+											class={[
+												'hidden text-xs whitespace-nowrap sm:block',
+												i === flowIndex ? 'font-semibold text-zinc-900' : 'text-zinc-500'
+											]}>{orderStatusLabel(step)}</span
+										>
+									</span>
+									{#if i < FLOW.length - 1}
+										<span
+											class={[
+												'mx-2 h-0.5 flex-1 rounded sm:mb-5',
+												i < flowIndex ? 'bg-brand-300' : 'bg-zinc-200'
+											]}
+											aria-hidden="true"
+										></span>
+									{/if}
+								</li>
+							{/each}
+						</ol>
+					{/if}
+					{#if order.trackingNumber}
+						<p
+							class="mt-4 flex items-center gap-2 border-t border-zinc-100 pt-4 text-sm text-zinc-600"
+						>
+							{m.od_tracking()}:
+							<span class="font-mono font-medium text-zinc-900 select-all"
+								>{order.trackingNumber}</span
+							>
+						</p>
+					{/if}
+				</section>
+
 				<!-- Items & totals -->
-				<section class="overflow-hidden card" aria-labelledby="{uid}-items">
-					<h2 id="{uid}-items" class="border-b border-slate-200 px-5 py-3 font-semibold">
-						{m.od_items()}
-					</h2>
-					<ul class="divide-y divide-slate-100">
+				<section class="card" aria-labelledby="{uid}-items">
+					<div class="card-header">
+						<h2 id="{uid}-items" class="card-title">{m.od_items()}</h2>
+						<span class="text-xs text-zinc-500 tabular-nums"
+							>{m.od_item_count({ count: order.items.reduce((n, i) => n + i.quantity, 0) })}</span
+						>
+					</div>
+					<ul class="divide-y divide-zinc-100">
 						{#each order.items as item (item.productId)}
 							{@const src = safeImageUrl(item.imageUrl)}
-							<li class="flex items-center gap-3 px-5 py-3">
+							<li class="flex items-center gap-4 px-5 py-3">
 								{#if src}
-									<img {src} alt="" class="size-14 rounded-lg object-cover" loading="lazy" />
+									<img
+										{src}
+										alt=""
+										class="size-12 rounded-lg object-cover ring-1 ring-zinc-200"
+										loading="lazy"
+									/>
 								{:else}
-									<span class="flex size-14 items-center justify-center rounded-lg bg-slate-100">
-										<Icon name="image" class="text-slate-400" />
+									<span class="flex size-12 items-center justify-center rounded-lg bg-zinc-100">
+										<Icon name="image" class="text-zinc-400" />
 									</span>
 								{/if}
 								<div class="min-w-0 flex-1">
 									<a
 										href={resolve(`/products/${item.productId}`)}
-										class="block truncate font-medium hover:underline">{localized(item.name)}</a
+										class="block truncate text-sm font-medium text-zinc-900 hover:text-brand-700"
+										>{localized(item.name)}</a
 									>
-									<p class="text-xs text-slate-500">
-										{m.od_unit_price()}: {formatCAD(item.unitPriceCents)}
+									<p class="text-xs text-zinc-500 tabular-nums">
+										{formatCAD(item.unitPriceCents)} × {item.quantity}
 										{#if item.discountPercent > 0}
-											<span class="ml-1 badge bg-red-100 text-red-700"
+											<span class="ml-1 badge bg-red-50 text-red-700"
 												>{m.products_discount({ percent: item.discountPercent })}</span
 											>
 										{/if}
-										· {m.od_qty()}: {item.quantity}
 									</p>
 								</div>
-								<span class="font-medium">{formatCAD(item.lineTotalCents)}</span>
+								<span class="text-sm font-medium text-zinc-900 tabular-nums"
+									>{formatCAD(item.lineTotalCents)}</span
+								>
 							</li>
 						{/each}
 					</ul>
-					<dl class="space-y-1 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">
-						<div class="flex justify-between">
+					<dl
+						class="space-y-1.5 rounded-b-xl border-t border-zinc-200 bg-zinc-50/70 px-5 py-4 text-sm tabular-nums"
+					>
+						<div class="flex justify-between text-zinc-600">
 							<dt>{m.od_subtotal()}</dt>
 							<dd>{formatCAD(order.subtotalCents)}</dd>
 						</div>
@@ -172,16 +286,16 @@
 								<dd>−{formatCAD(order.discountCents)}</dd>
 							</div>
 						{/if}
-						<div class="flex justify-between">
+						<div class="flex justify-between text-zinc-600">
 							<dt>{m.od_shipping_cost()}</dt>
 							<dd>{formatCAD(order.shippingCents)}</dd>
 						</div>
-						<div class="flex justify-between">
+						<div class="flex justify-between text-zinc-600">
 							<dt>{m.od_tax()}</dt>
 							<dd>{formatCAD(order.taxCents)}</dd>
 						</div>
 						<div
-							class="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold"
+							class="flex justify-between border-t border-zinc-200 pt-2 text-base font-semibold text-zinc-900"
 						>
 							<dt>{m.od_total()}</dt>
 							<dd>{formatCAD(order.totalCents)}</dd>
@@ -189,123 +303,128 @@
 					</dl>
 				</section>
 
-				<!-- Status transitions -->
-				{#if canWrite}
-					<section class="card p-5" aria-labelledby="{uid}-status">
-						<h2 id="{uid}-status" class="mb-3 font-semibold">{m.od_change_status()}</h2>
-						{#if order.trackingNumber}
-							<p class="mb-3 text-sm">
-								{m.od_tracking()}: <span class="font-mono select-all">{order.trackingNumber}</span>
-							</p>
-						{/if}
-						{#if nextStatuses.length === 0}
-							<p class="text-sm text-slate-500">{m.od_no_transitions()}</p>
-						{:else}
-							<div class="flex flex-wrap gap-2">
-								{#each nextStatuses as next (next)}
-									<button
-										type="button"
-										class={next === 'cancelled' || next === 'refunded'
-											? 'btn-danger'
-											: 'btn-primary'}
-										onclick={() => openStatus(next)}
-									>
-										{m.od_mark_as({ status: orderStatusLabel(next) })}
-									</button>
-								{/each}
-							</div>
-						{/if}
-					</section>
-				{/if}
-
 				<!-- Notes -->
 				{#if order.customerNote}
-					<section class="card p-5">
-						<h2 class="mb-2 font-semibold">{m.od_customer_note()}</h2>
-						<p class="text-sm whitespace-pre-line text-slate-700">{order.customerNote}</p>
+					<section class="card">
+						<div class="card-header">
+							<h2 class="card-title">{m.od_customer_note()}</h2>
+						</div>
+						<p class="p-5 text-sm whitespace-pre-line text-zinc-700">{order.customerNote}</p>
 					</section>
 				{/if}
-				<section class="card p-5">
+				<section class="card">
 					<form onsubmit={saveNote}>
-						<label for="{uid}-note" class="mb-1 block font-semibold">{m.od_staff_note()}</label>
-						<p id="{uid}-note-hint" class="mb-2 text-xs text-slate-500">{m.od_staff_note_hint()}</p>
-						<textarea
-							id="{uid}-note"
-							class="input min-h-28"
-							maxlength="5000"
-							aria-describedby="{uid}-note-hint"
-							readonly={!canWrite}
-							bind:value={staffNote}></textarea>
-						{#if canWrite}
-							<div class="mt-2 flex justify-end">
-								<button type="submit" class="btn-primary" disabled={!noteDirty || savingNote}>
-									{savingNote ? m.common_saving() : m.common_save()}
-								</button>
-							</div>
-						{/if}
+						<div class="card-header">
+							<label for="{uid}-note" class="card-title">{m.od_staff_note()}</label>
+							<span id="{uid}-note-hint" class="text-xs text-zinc-500"
+								>{m.od_staff_note_hint()}</span
+							>
+						</div>
+						<div class="p-5">
+							<textarea
+								id="{uid}-note"
+								class="input h-auto min-h-28 py-2"
+								maxlength="5000"
+								aria-describedby="{uid}-note-hint"
+								readonly={!canWrite}
+								bind:value={staffNote}></textarea>
+							{#if canWrite && noteDirty}
+								<div class="mt-3 flex justify-end gap-2">
+									<button
+										type="button"
+										class="btn-secondary"
+										disabled={savingNote}
+										onclick={() => (staffNote = serverNote)}>{m.pf_discard()}</button
+									>
+									<button type="submit" class="btn-primary" disabled={savingNote}>
+										{savingNote ? m.common_saving() : m.common_save()}
+									</button>
+								</div>
+							{/if}
+						</div>
 					</form>
 				</section>
 			</div>
 
-			<div class="space-y-6">
-				<section class="card p-5">
-					<h2 class="mb-3 font-semibold">{m.od_customer()}</h2>
-					<div class="space-y-1 text-sm">
-						<p class="font-medium">{order.customer.name}</p>
-						<p class="break-all">
+			<div class="min-w-0 space-y-6">
+				<section class="card">
+					<div class="card-header">
+						<h2 class="card-title">{m.od_customer()}</h2>
+					</div>
+					<div class="space-y-2 p-5 text-sm">
+						<p class="flex items-center gap-3 font-medium text-zinc-900">
+							<span
+								class="flex size-9 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600 uppercase"
+								aria-hidden="true">{order.customer.name.slice(0, 2)}</span
+							>
+							{order.customer.name}
+						</p>
+						<p class="flex items-center gap-2 break-all text-zinc-600">
+							<Icon name="mail" size={14} class="text-zinc-400" />
 							<span class="sr-only">{m.od_email()}:</span>
 							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- mailto link -->
-							<a class="text-brand-700 hover:underline" href="mailto:{order.customer.email}"
+							<a class="text-brand-600 hover:underline" href="mailto:{order.customer.email}"
 								>{order.customer.email}</a
 							>
 						</p>
 						{#if order.customer.phone}
-							<p><span class="sr-only">{m.od_phone()}:</span>{order.customer.phone}</p>
+							<p class="text-zinc-600">
+								<span class="sr-only">{m.od_phone()}:</span>{order.customer.phone}
+							</p>
 						{/if}
 					</div>
 				</section>
 
-				<section class="card p-5">
-					<div class="mb-3 flex items-center justify-between gap-2">
-						<h2 class="font-semibold">{m.od_shipping()}</h2>
-						{#if canShipping}
-							<button
-								type="button"
-								class="btn-secondary btn-sm"
-								disabled={!shippingEditable}
-								onclick={openAddress}
-							>
-								<Icon name="edit" size={14} />{m.od_edit_address()}
+				<section class="card">
+					<div class="card-header">
+						<h2 class="card-title">{m.od_shipping()}</h2>
+						{#if canShipping && shippingEditable}
+							<button type="button" class="btn-ghost btn-sm" onclick={openAddress}>
+								<Icon name="edit" size={14} />{m.common_edit()}
 							</button>
 						{/if}
 					</div>
-					<address class="text-sm leading-relaxed not-italic">
-						{order.shipping.name}<br />
-						{order.shipping.line1}<br />
-						{#if order.shipping.line2}{order.shipping.line2}<br />{/if}
-						{order.shipping.city}{order.shipping.region ? `, ${order.shipping.region}` : ''}
-						{order.shipping.postalCode}<br />
-						{order.shipping.country}<br />
-						{order.shipping.phone}
-					</address>
-					{#if canShipping && !shippingEditable}
-						<p class="mt-2 text-xs text-slate-500">{m.od_address_locked()}</p>
-					{/if}
+					<div class="p-5">
+						<address class="text-sm leading-relaxed text-zinc-700 not-italic">
+							<span class="font-medium text-zinc-900">{order.shipping.name}</span><br />
+							{order.shipping.line1}<br />
+							{#if order.shipping.line2}{order.shipping.line2}<br />{/if}
+							{order.shipping.city}{order.shipping.region ? `, ${order.shipping.region}` : ''}
+							{order.shipping.postalCode}<br />
+							{order.shipping.country}<br />
+							{order.shipping.phone}
+						</address>
+						{#if canShipping && !shippingEditable}
+							<p class="mt-3 text-xs text-zinc-500">{m.od_address_locked()}</p>
+						{/if}
+					</div>
 				</section>
 
-				<section class="card p-5" aria-labelledby="{uid}-history">
-					<h2 id="{uid}-history" class="mb-3 font-semibold">{m.od_history()}</h2>
-					<ol class="relative space-y-4 border-l border-slate-200 pl-4">
+				<section class="card" aria-labelledby="{uid}-history">
+					<div class="card-header">
+						<h2 id="{uid}-history" class="card-title">{m.od_history()}</h2>
+					</div>
+					<ol class="relative space-y-5 p-5">
 						{#each history as event, i (i)}
-							<li class="relative">
+							<li class="relative pl-6">
+								{#if i < history.length - 1}
+									<span
+										class="absolute top-4 bottom-[-1.25rem] left-[5px] w-px bg-zinc-200"
+										aria-hidden="true"
+									></span>
+								{/if}
 								<span
-									class="absolute top-1.5 -left-[21px] size-2.5 rounded-full bg-brand-800 ring-4 ring-white"
+									class={[
+										'absolute top-1.5 left-0 size-[11px] rounded-full ring-4 ring-white',
+										i === 0 ? 'bg-brand-400' : 'bg-zinc-300'
+									]}
+									aria-hidden="true"
 								></span>
-								<p class="text-sm font-medium">{eventText(event)}</p>
-								{#if event.note}<p class="text-sm whitespace-pre-line text-slate-600">
-										{event.note}
-									</p>{/if}
-								<p class="text-xs text-slate-500">
+								<p class="text-sm font-medium text-zinc-900">{eventText(event)}</p>
+								{#if event.note}
+									<p class="mt-0.5 text-sm whitespace-pre-line text-zinc-600">{event.note}</p>
+								{/if}
+								<p class="mt-0.5 text-xs text-zinc-500">
 									<time datetime={event.at}>{formatDateTime(event.at)}</time>
 									· {m.od_by({ actor: event.actor })}
 								</p>

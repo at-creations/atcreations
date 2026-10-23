@@ -3,6 +3,9 @@
 	import { getLocale, locales, setLocale } from '$lib/paraglide/runtime.js';
 	import Icon from './Icon.svelte';
 
+	let { compact = false }: { /** Show only the language code (top bar). */ compact?: boolean } =
+		$props();
+
 	const uid = $props.id();
 	const labels: Record<(typeof locales)[number], () => string> = {
 		en: m.lang_en,
@@ -10,17 +13,23 @@
 	};
 </script>
 
-<div class="flex items-center gap-2">
-	<Icon name="globe" size={16} class="text-blue-200" />
+<div
+	class="relative flex h-9 items-center rounded-lg text-zinc-600 focus-within:ring-2 focus-within:ring-brand-600/30 hover:bg-zinc-100 hover:text-zinc-900"
+>
+	<Icon name="globe" size={16} class="pointer-events-none absolute left-2.5" />
 	<label class="sr-only" for="{uid}-locale">{m.language()}</label>
 	<select
 		id="{uid}-locale"
-		class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-sm text-white focus:ring-2 focus:ring-white/40 focus:outline-none"
+		class={[
+			'h-full cursor-pointer appearance-none rounded-lg bg-transparent pr-3 pl-8 text-sm font-medium focus:outline-none',
+			compact && 'uppercase'
+		]}
+		title={m.language()}
 		value={getLocale()}
 		onchange={(event) => setLocale(event.currentTarget.value as (typeof locales)[number])}
 	>
 		{#each locales as locale (locale)}
-			<option value={locale} class="text-slate-900">{labels[locale]()}</option>
+			<option value={locale}>{compact ? locale.toUpperCase() : labels[locale]()}</option>
 		{/each}
 	</select>
 </div>

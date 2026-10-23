@@ -178,28 +178,28 @@
 </script>
 
 <section class="card p-5" aria-labelledby="{uid}-title">
-	<h2 id="{uid}-title" class="text-lg font-semibold">
+	<h2 id="{uid}-title" class="flex items-baseline justify-between gap-3 card-title">
 		{m.img_title()}
-		<span class="text-sm font-normal text-slate-500"
+		<span class="text-xs font-normal text-zinc-400 tabular-nums"
 			>{m.img_count({ current: images.length, max: MAX_PRODUCT_IMAGES })}</span
 		>
 	</h2>
-	<p class="mt-1 text-xs text-slate-500">{m.img_reorder_hint()}</p>
+	<p class="mt-1 text-xs text-zinc-500">{m.img_reorder_hint()}</p>
 	<p class="sr-only" aria-live="polite">{announcement}</p>
 
 	{#if images.length === 0}
-		<p class="mt-4 text-sm text-slate-500">{m.img_none()}</p>
+		<p class="mt-4 text-sm text-zinc-500">{m.img_none()}</p>
 	{:else}
-		<ol class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-busy={reordering}>
+		<ol class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4" aria-busy={reordering}>
 			{#each images as image, index (image.id)}
 				{@const src = safeImageUrl(image.url)}
 				<li
 					draggable={canEdit && !reordering}
 					class={[
-						'group relative overflow-hidden rounded-lg border bg-slate-50',
+						'group relative overflow-hidden rounded-lg border bg-zinc-50',
 						dropIndex === index && dragIndex !== index
-							? 'border-brand-600 ring-2 ring-brand-600/30'
-							: 'border-slate-200',
+							? 'border-brand-400 ring-2 ring-brand-200'
+							: 'border-zinc-200',
 						dragIndex === index && 'opacity-50'
 					]}
 					ondragstart={(e) => {
@@ -232,15 +232,17 @@
 						/>
 					{/if}
 					{#if index === 0}
-						<span class="absolute top-2 left-2 badge bg-brand-800 text-white">{m.img_cover()}</span>
+						<span class="absolute top-2 left-2 badge bg-zinc-900/80 text-white backdrop-blur"
+							>{m.img_cover()}</span
+						>
 					{/if}
 					{#if canEdit}
 						<span
-							class="absolute top-2 right-2 hidden rounded bg-white/90 p-1 text-slate-500 group-hover:block"
+							class="absolute top-2 right-2 hidden rounded bg-white/90 p-1 text-zinc-500 group-hover:block"
 							aria-hidden="true"><Icon name="grip" size={14} /></span
 						>
 						<div
-							class="flex items-center justify-between gap-1 border-t border-slate-200 bg-white p-1"
+							class="flex items-center justify-between gap-1 border-t border-zinc-200 bg-white p-1"
 						>
 							<div class="flex">
 								<button
@@ -283,7 +285,7 @@
 			role="presentation"
 			class={[
 				'mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition',
-				dropActive ? 'border-brand-600 bg-brand-50' : 'border-slate-300',
+				dropActive ? 'border-brand-400 bg-brand-50' : 'border-zinc-300',
 				remaining <= 0 && 'opacity-60'
 			]}
 			ondragover={(e) => {
@@ -299,16 +301,16 @@
 				addFiles(e.dataTransfer?.files);
 			}}
 		>
-			<Icon name="upload" size={28} class="text-slate-400" />
+			<Icon name="upload" size={28} class="text-zinc-400" />
 			{#if remaining <= 0}
-				<p class="text-sm font-medium text-slate-600">{m.img_limit()}</p>
+				<p class="text-sm font-medium text-zinc-600">{m.img_limit()}</p>
 			{:else}
-				<p class="text-sm text-slate-600">{m.img_drop()}</p>
+				<p class="text-sm text-zinc-600">{m.img_drop()}</p>
 				<button type="button" class="btn-secondary" onclick={() => fileInput?.click()}>
 					{m.img_choose()}
 				</button>
 			{/if}
-			<p class="text-xs text-slate-500">{m.img_specs({ size: MAX_IMAGE_MB })}</p>
+			<p class="text-xs text-zinc-500">{m.img_specs({ size: MAX_IMAGE_MB })}</p>
 			<input
 				bind:this={fileInput}
 				type="file"
@@ -337,7 +339,7 @@
 			</div>
 			<ul class="space-y-2" aria-live="polite">
 				{#each queue as item (item.key)}
-					<li class="rounded-lg border border-slate-200 p-2 text-sm">
+					<li class="rounded-lg border border-zinc-200 p-2 text-sm">
 						<div class="flex items-center justify-between gap-2">
 							<span class="min-w-0 truncate font-medium">{item.file.name}</span>
 							<span
@@ -345,7 +347,7 @@
 									'shrink-0 text-xs',
 									item.status === 'failed' && 'text-red-600',
 									item.status === 'done' && 'text-emerald-700',
-									(item.status === 'queued' || item.status === 'uploading') && 'text-slate-500'
+									(item.status === 'queued' || item.status === 'uploading') && 'text-zinc-500'
 								]}
 							>
 								{statusText(item)}

@@ -49,16 +49,16 @@
 <Modal bind:open busy={saving} size="lg" title={m.staff_change_role_title()}>
 	{#if member}
 		<form id="{uid}-form" class="space-y-4" onsubmit={submit}>
-			<p class="text-sm text-slate-600">{m.staff_current_user({ email: member.email })}</p>
+			<p class="text-sm text-zinc-600">{m.staff_current_user({ email: member.email })}</p>
 			{#if member.role === 'none'}
-				<p class="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{m.staff_no_role_hint()}</p>
+				<p class="rounded-lg bg-zinc-100 p-3 text-sm text-zinc-700">{m.staff_no_role_hint()}</p>
 			{/if}
 			<div class="flex flex-wrap items-end gap-4">
 				<div>
 					<p class="label">{m.staff_current_role()}</p>
 					<StatusBadge kind="role" value={member.role} />
 				</div>
-				<Icon name="right" class="mb-2 text-slate-400" />
+				<Icon name="right" class="mb-2 text-zinc-400" />
 				<Field label={m.staff_new_role()} class="min-w-48 flex-1">
 					{#snippet children(control)}
 						<select {...control} class="input" bind:value={role}>

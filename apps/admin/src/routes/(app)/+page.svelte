@@ -7,12 +7,16 @@
 	import { formatDateTime, localized } from '$lib/i18n';
 	import { safeImageUrl } from '$lib/links';
 	import { m } from '$lib/paraglide/messages.js';
-	import { orderListQuery, productListQuery } from '$lib/queries';
+	import { orderListQuery, pendingOrderCountQuery, productListQuery } from '$lib/queries';
 	import { getAdminSession } from '$lib/state/session.svelte';
 	import { formatCAD } from '$lib/utils/money';
 
 	const session = getAdminSession();
 	const canOrders = $derived(session.can('orders:read'));
+
+	/** Stock scan size: enough to count out-of-stock items for a small catalogue. */
+	const STOCK_SCAN = 50;
+	const LOW_STOCK = 5;
 
 	const total = (res: { meta: { total: number } }) => res.meta.total;
 
@@ -20,174 +24,125 @@
 		...productListQuery({ pageSize: 1 }),
 		select: total
 	}));
-	const published = createQuery(() => ({
-		...productListQuery({ pageSize: 1, status: 'published' }),
-		select: total
-	}));
 	const drafts = createQuery(() => ({
 		...productListQuery({ pageSize: 1, status: 'draft' }),
 		select: total
 	}));
-	const lowStock = createQuery(() => ({
-		...productListQuery({ sort: 'stock_asc', pageSize: 5 }),
-		select: (res) => res.data
+	const stock = createQuery(() => ({
+		...productListQuery({ sort: 'stock_asc', pageSize: STOCK_SCAN }),
+		select: (res) => ({
+			outOfStock: res.data.filter((p) => p.stock === 0).length,
+			lowest: res.data.filter((p) => p.stock < LOW_STOCK).slice(0, 6)
+		})
 	}));
+	const outOfStock = $derived({ isError: stock.isError, data: stock.data?.outOfStock });
 	const pendingOrders = createQuery(() => ({
-		...orderListQuery({ status: 'pending', pageSize: 1 }),
-		select: total,
+		...pendingOrderCountQuery(),
 		enabled: canOrders
 	}));
 	const recentOrders = createQuery(() => ({
-		...orderListQuery({ sort: 'newest', pageSize: 5 }),
+		...orderListQuery({ sort: 'newest', pageSize: 6 }),
 		select: (res) => res.data,
 		enabled: canOrders
 	}));
 
-	const displayName = $derived(session.me?.name || session.me?.email || '');
+	const productsHref = resolve('/products');
+	const ordersHref = resolve('/orders');
 </script>
 
-{#snippet stat(query: { isError: boolean; data: number | undefined })}
-	{#if query.isError && query.data === undefined}
-		<span class="text-slate-400">—</span>
-	{:else if query.data === undefined}
-		<span class="inline-block h-8 w-12 animate-pulse rounded bg-slate-200"></span>
-	{:else}
-		{query.data}
-	{/if}
+{#snippet stat(
+	href: string,
+	label: string,
+	tone: string,
+	query: { isError: boolean; data: number | undefined }
+)}
+	<!-- eslint-disable svelte/no-navigation-without-resolve -- resolved path + query -->
+	<a {href} class={['rounded-2xl p-4 transition-[filter] hover:brightness-[0.98]', tone]}>
+		<span class="text-sm opacity-75">{label}</span>
+		<span class="mt-1 block text-2xl font-semibold tabular-nums">
+			{#if query.data !== undefined}
+				{query.data}
+			{:else if query.isError}
+				<span class="opacity-40">—</span>
+			{:else}
+				<span class="inline-block h-7 w-10 animate-pulse rounded bg-white/60"></span>
+			{/if}
+		</span>
+	</a>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 {/snippet}
 
-<PageHeader title={m.dash_welcome({ name: displayName })} subtitle={m.dash_subtitle()} />
-
-<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={m.dash_title()}>
-	<a href={resolve('/products')} class="card p-5 transition hover:shadow-md">
-		<p class="flex items-center gap-2 text-sm font-medium text-slate-500">
-			<Icon name="box" size={16} />{m.dash_products()}
-		</p>
-		<p class="mt-2 text-3xl font-bold text-slate-900">{@render stat(totalProducts)}</p>
-	</a>
-	<a href={resolve('/products?status=published')} class="card p-5 transition hover:shadow-md">
-		<p class="text-sm font-medium text-slate-500">{m.dash_published()}</p>
-		<p class="mt-2 text-3xl font-bold text-emerald-700">{@render stat(published)}</p>
-	</a>
-	<a href={resolve('/products?status=draft')} class="card p-5 transition hover:shadow-md">
-		<p class="text-sm font-medium text-slate-500">{m.dash_draft()}</p>
-		<p class="mt-2 text-3xl font-bold text-amber-700">{@render stat(drafts)}</p>
-	</a>
-	{#if canOrders}
-		<a href={resolve('/orders?status=pending')} class="card p-5 transition hover:shadow-md">
-			<p class="flex items-center gap-2 text-sm font-medium text-slate-500">
-				<Icon name="cart" size={16} />{m.dash_pending_orders()}
-			</p>
-			<p class="mt-2 text-3xl font-bold text-slate-900">{@render stat(pendingOrders)}</p>
-		</a>
-	{/if}
-</section>
-
-<section class="mt-6" aria-labelledby="quick-actions">
-	<h2 id="quick-actions" class="mb-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-		{m.dash_quick_actions()}
-	</h2>
-	<div class="flex flex-wrap gap-2">
+<PageHeader title={m.nav_dashboard()}>
+	{#snippet actions()}
 		{#if session.can('products:write')}
 			<a class="btn-primary" href={resolve('/products/new')}
-				><Icon name="plus" />{m.dash_add_product()}</a
+				><Icon name="plus" size={16} />{m.products_add()}</a
 			>
 		{/if}
-		<a class="btn-secondary" href={resolve('/categories')}
-			><Icon name="tag" />{m.dash_manage_categories()}</a
-		>
-		{#if session.can('staff:manage')}
-			<a class="btn-secondary" href={resolve('/staff')}
-				><Icon name="users" />{m.dash_invite_staff()}</a
-			>
-		{/if}
-		{#if session.can('store:write')}
-			<a class="btn-secondary" href={resolve('/store')}
-				><Icon name="store" />{m.dash_edit_store()}</a
-			>
-		{/if}
-	</div>
+	{/snippet}
+</PageHeader>
+
+<section class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={m.nav_dashboard()}>
+	{#if canOrders}
+		{@render stat(
+			`${ordersHref}?status=pending`,
+			m.dash_pending_orders(),
+			'bg-amber-100 text-amber-900',
+			pendingOrders
+		)}
+	{/if}
+	{@render stat(productsHref, m.dash_products(), 'bg-sky-100 text-sky-900', totalProducts)}
+	{@render stat(
+		`${productsHref}?status=draft`,
+		m.dash_draft(),
+		'bg-brand-100 text-brand-900',
+		drafts
+	)}
+	{@render stat(
+		`${productsHref}?sort=stock_asc`,
+		m.dash_out_of_stock(),
+		'bg-rose-100 text-rose-900',
+		outOfStock
+	)}
 </section>
 
-<div class="mt-6 grid gap-6 lg:grid-cols-2">
-	<section class="card" aria-labelledby="low-stock">
-		<header class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-			<h2 id="low-stock" class="font-semibold">{m.dash_low_stock()}</h2>
-			<a class="text-sm text-brand-700 hover:underline" href={resolve('/products?sort=stock_asc')}
-				>{m.dash_view_all()}</a
-			>
-		</header>
-		{#if lowStock.isPending}
-			<p class="p-5 text-sm text-slate-500" role="status">{m.common_loading()}</p>
-		{:else if lowStock.isError}
-			<p class="p-5 text-sm text-red-600">{m.products_load_failed()}</p>
-		{:else if lowStock.data.length === 0}
-			<p class="p-5 text-sm text-slate-500">{m.dash_no_products()}</p>
-		{:else}
-			<ul class="divide-y divide-slate-100">
-				{#each lowStock.data as product (product.id)}
-					{@const cover = safeImageUrl(product.images[0]?.url)}
-					<li>
-						<a
-							href={resolve(`/products/${product.id}`)}
-							class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50"
-						>
-							{#if cover}
-								<img src={cover} alt="" class="size-10 rounded object-cover" loading="lazy" />
-							{:else}
-								<span class="flex size-10 items-center justify-center rounded bg-slate-100">
-									<Icon name="image" size={16} class="text-slate-400" />
-								</span>
-							{/if}
-							<span class="min-w-0 flex-1 truncate text-sm font-medium"
-								>{localized(product.name)}</span
-							>
-							<span
-								class={[
-									'text-sm font-semibold',
-									product.stock === 0
-										? 'text-red-600'
-										: product.stock < 5
-											? 'text-amber-600'
-											: 'text-slate-600'
-								]}>{m.dash_in_stock({ count: product.stock })}</span
-							>
-						</a>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
-
+<div class="mt-6 grid items-start gap-6 lg:grid-cols-3">
 	{#if canOrders}
-		<section class="card" aria-labelledby="recent-orders">
-			<header class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-				<h2 id="recent-orders" class="font-semibold">{m.dash_recent_orders()}</h2>
-				<a class="text-sm text-brand-700 hover:underline" href={resolve('/orders')}
+		<section class="card lg:col-span-2" aria-labelledby="recent-orders">
+			<header class="card-header">
+				<h2 id="recent-orders" class="card-title">{m.dash_recent_orders()}</h2>
+				<a class="text-sm text-brand-600 hover:text-brand-700" href={ordersHref}
 					>{m.dash_view_all()}</a
 				>
 			</header>
 			{#if recentOrders.isPending}
-				<p class="p-5 text-sm text-slate-500" role="status">{m.common_loading()}</p>
+				<div class="space-y-2 p-4" role="status" aria-label={m.common_loading()}>
+					{#each [0, 1, 2] as i (i)}
+						<div class="h-10 animate-pulse rounded-lg bg-zinc-50"></div>
+					{/each}
+				</div>
 			{:else if recentOrders.isError}
 				<p class="p-5 text-sm text-red-600">{m.orders_load_failed()}</p>
 			{:else if recentOrders.data.length === 0}
-				<p class="p-5 text-sm text-slate-500">{m.dash_no_orders()}</p>
+				<p class="p-5 text-sm text-zinc-500">{m.dash_no_orders()}</p>
 			{:else}
-				<ul class="divide-y divide-slate-100">
+				<ul class="divide-y divide-zinc-100">
 					{#each recentOrders.data as order (order.id)}
 						<li>
 							<a
 								href={resolve(`/orders/${order.id}`)}
-								class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-slate-50"
+								class="flex items-center gap-4 px-5 py-3 text-sm hover:bg-zinc-50"
 							>
-								<span class="font-mono text-sm font-medium">{order.number}</span>
-								<StatusBadge kind="order" value={order.status} />
-								<span class="min-w-0 flex-1 truncate text-sm text-slate-600"
+								<span class="w-20 shrink-0 font-mono text-zinc-500">{order.number}</span>
+								<span class="min-w-0 flex-1 truncate font-medium text-zinc-900"
 									>{order.customer.name}</span
 								>
-								<span class="text-sm font-semibold">{formatCAD(order.totalCents)}</span>
-								<span class="w-full text-xs text-slate-500">{formatDateTime(order.createdAt)}</span>
+								<span class="hidden text-zinc-500 sm:inline">{formatDateTime(order.createdAt)}</span
+								>
+								<StatusBadge kind="order" value={order.status} />
+								<span class="w-20 text-right font-medium tabular-nums"
+									>{formatCAD(order.totalCents)}</span
+								>
 							</a>
 						</li>
 					{/each}
@@ -195,4 +150,46 @@
 			{/if}
 		</section>
 	{/if}
+
+	<section class="card" aria-labelledby="low-stock">
+		<header class="card-header">
+			<h2 id="low-stock" class="card-title">{m.dash_low_stock()}</h2>
+		</header>
+		{#if stock.isPending}
+			<div class="space-y-2 p-4" role="status" aria-label={m.common_loading()}>
+				{#each [0, 1, 2] as i (i)}
+					<div class="h-9 animate-pulse rounded-lg bg-zinc-50"></div>
+				{/each}
+			</div>
+		{:else if stock.isError}
+			<p class="p-5 text-sm text-red-600">{m.products_load_failed()}</p>
+		{:else if stock.data.lowest.length === 0}
+			<p class="p-5 text-sm text-zinc-500">—</p>
+		{:else}
+			<ul class="divide-y divide-zinc-100">
+				{#each stock.data.lowest as product (product.id)}
+					{@const cover = safeImageUrl(product.images[0]?.url)}
+					<li>
+						<a
+							href={resolve(`/products/${product.id}`)}
+							class="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-zinc-50"
+						>
+							{#if cover}
+								<img src={cover} alt="" class="size-8 rounded object-cover" loading="lazy" />
+							{:else}
+								<span class="size-8 rounded bg-zinc-100"></span>
+							{/if}
+							<span class="min-w-0 flex-1 truncate text-zinc-800">{localized(product.name)}</span>
+							<span
+								class={[
+									'font-medium tabular-nums',
+									product.stock === 0 ? 'text-red-600' : 'text-amber-600'
+								]}>{product.stock}</span
+							>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
 </div>

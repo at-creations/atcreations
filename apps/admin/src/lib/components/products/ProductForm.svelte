@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Category, Product, ProductInput, ProductStatus } from '@atcreations/api-types';
 	import { useQueryClient } from '@tanstack/svelte-query';
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { ApiError, fieldErrorMap } from '$lib/api';
 	import Field from '$lib/components/Field.svelte';
@@ -20,12 +20,15 @@
 	let {
 		product,
 		categories,
-		onsaved
+		onsaved,
+		media
 	}: {
 		product?: Product;
 		categories: Category[];
 		/** Called after a successful save; the product cache is already updated. */
 		onsaved?: (product: Product, created: boolean) => void | Promise<void>;
+		/** Rendered in the main column under the details (the image manager). */
+		media?: Snippet;
 	} = $props();
 
 	const session = getAdminSession();
@@ -33,7 +36,7 @@
 	const save = createSaveProductMutation();
 	const readOnly = $derived(!session.can('products:write'));
 	const uid = $props.id();
-	const STATUSES: readonly ProductStatus[] = ['draft', 'published', 'archived'];
+	const STATUSES: readonly ProductStatus[] = ['published', 'draft', 'archived'];
 
 	interface FormValues {
 		nameEn: string;
@@ -111,6 +114,13 @@
 		// Mirrors the API: rounded half-up.
 		return Math.floor((parsedPrice.cents * (100 - d)) / 100 + 0.5);
 	});
+
+	/** Throw away local edits and return to the last saved values. */
+	function discard() {
+		values = JSON.parse(snapshot) as FormValues;
+		errors = {};
+		if (!product) slugTouched = false;
+	}
 
 	function onNameEnInput(value: string) {
 		values.nameEn = value;
@@ -246,224 +256,312 @@
 	});
 </script>
 
-<form onsubmit={submit} novalidate class="space-y-6">
+<form onsubmit={submit} novalidate class="pb-24">
 	{#if readOnly}
-		<p class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{m.pf_read_only()}</p>
+		<p
+			class="mb-6 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200"
+		>
+			<Icon name="info" size={16} />{m.pf_read_only()}
+		</p>
 	{/if}
-	<fieldset disabled={readOnly || saving} class="space-y-6">
-		<section class="card p-5">
-			<h2 class="mb-4 text-lg font-semibold">{m.pf_basic()}</h2>
-			{#if product}
-				<p class="mb-4 text-xs text-slate-500">
-					{m.pf_product_id()}: <span class="font-mono select-all">{product.id}</span>
-				</p>
-			{/if}
-			<LangTabs bind:active={tab} errors={tabErrors}>
-				{#snippet children(lang)}
-					{#if lang === 'en'}
-						<Field label={m.pf_name()} required error={errors['name.en']}>
-							{#snippet children(control)}
-								<input
-									{...control}
-									class="input"
-									maxlength="200"
-									placeholder={m.pf_name_placeholder()}
-									value={values.nameEn}
-									oninput={(e) => onNameEnInput(e.currentTarget.value)}
-								/>
-							{/snippet}
-						</Field>
-						<Field label={m.pf_description()} required error={errors['description.en']}>
-							{#snippet children(control)}
-								<textarea
-									{...control}
-									class="input min-h-32"
-									maxlength="5000"
-									placeholder={m.pf_description_placeholder()}
-									bind:value={values.descriptionEn}></textarea>
-							{/snippet}
-						</Field>
-					{:else}
-						<p class="text-xs text-slate-500">{m.vietnamese_note()}</p>
-						<Field label={m.pf_name()} optional error={errors['name.vi']}>
-							{#snippet children(control)}
-								<input
-									{...control}
-									class="input"
-									lang="vi"
-									maxlength="200"
-									placeholder={m.pf_name_vi_placeholder()}
-									bind:value={values.nameVi}
-								/>
-							{/snippet}
-						</Field>
-						<Field label={m.pf_description()} optional error={errors['description.vi']}>
-							{#snippet children(control)}
-								<textarea
-									{...control}
-									class="input min-h-32"
-									lang="vi"
-									maxlength="5000"
-									placeholder={m.pf_description_vi_placeholder()}
-									bind:value={values.descriptionVi}></textarea>
-							{/snippet}
-						</Field>
-					{/if}
-				{/snippet}
-			</LangTabs>
 
-			<div class="mt-4 grid gap-4 md:grid-cols-2">
-				<Field label={m.pf_slug()} hint={m.pf_slug_hint()} error={errors.slug}>
-					{#snippet children(control)}
-						<div class="flex gap-2">
+	<div class="grid items-start gap-6 lg:grid-cols-3">
+		<!-- Main column -->
+		<div class="min-w-0 space-y-6 lg:col-span-2">
+			<fieldset disabled={readOnly || saving} class="min-w-0 card">
+				<div class="card-header">
+					<h2 class="card-title">{m.pf_basic()}</h2>
+				</div>
+				<div class="p-5">
+					<LangTabs bind:active={tab} errors={tabErrors}>
+						{#snippet children(lang)}
+							{#if lang === 'en'}
+								<Field label={m.pf_name()} required error={errors['name.en']}>
+									{#snippet children(control)}
+										<input
+											{...control}
+											class="input"
+											maxlength="200"
+											placeholder={m.pf_name_placeholder()}
+											value={values.nameEn}
+											oninput={(e) => onNameEnInput(e.currentTarget.value)}
+										/>
+									{/snippet}
+								</Field>
+								<Field label={m.pf_description()} required error={errors['description.en']}>
+									{#snippet children(control)}
+										<textarea
+											{...control}
+											class="input h-auto min-h-40 py-2"
+											maxlength="5000"
+											placeholder={m.pf_description_placeholder()}
+											bind:value={values.descriptionEn}></textarea>
+									{/snippet}
+								</Field>
+							{:else}
+								<p class="flex items-center gap-2 text-xs text-zinc-500">
+									<Icon name="info" size={14} />{m.vietnamese_note()}
+								</p>
+								<Field label={m.pf_name()} optional error={errors['name.vi']}>
+									{#snippet children(control)}
+										<input
+											{...control}
+											class="input"
+											lang="vi"
+											maxlength="200"
+											placeholder={m.pf_name_vi_placeholder()}
+											bind:value={values.nameVi}
+										/>
+									{/snippet}
+								</Field>
+								<Field label={m.pf_description()} optional error={errors['description.vi']}>
+									{#snippet children(control)}
+										<textarea
+											{...control}
+											class="input h-auto min-h-40 py-2"
+											lang="vi"
+											maxlength="5000"
+											placeholder={m.pf_description_vi_placeholder()}
+											bind:value={values.descriptionVi}></textarea>
+									{/snippet}
+								</Field>
+							{/if}
+						{/snippet}
+					</LangTabs>
+					<div class="mt-4">
+						<Field label={m.pf_slug()} error={errors.slug}>
+							{#snippet children(control)}
+								<div class="flex gap-2">
+									<input
+										{...control}
+										class="input font-mono text-xs"
+										maxlength="120"
+										autocomplete="off"
+										spellcheck="false"
+										value={values.slug}
+										oninput={(e) => {
+											slugTouched = true;
+											values.slug = e.currentTarget.value.toLowerCase();
+										}}
+									/>
+									<button
+										type="button"
+										class="btn-secondary shrink-0"
+										onclick={() => (values.slug = slugify(values.nameEn))}
+									>
+										{m.pf_slug_suggest()}
+									</button>
+								</div>
+							{/snippet}
+						</Field>
+					</div>
+				</div>
+			</fieldset>
+
+			{@render media?.()}
+
+			<fieldset disabled={readOnly || saving} class="min-w-0 card">
+				<div class="card-header">
+					<h2 class="card-title">{m.pf_pricing()}</h2>
+				</div>
+				<div class="grid gap-4 p-5 sm:grid-cols-2">
+					<Field label={m.pf_price()} hint={m.pf_price_hint()} error={errors.priceCents}>
+						{#snippet children(control)}
+							<div class="relative">
+								<span
+									class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-zinc-400"
+									>$</span
+								>
+								<input
+									{...control}
+									class="input pl-7 tabular-nums"
+									inputmode="decimal"
+									placeholder="0.00"
+									bind:value={values.price}
+								/>
+							</div>
+						{/snippet}
+					</Field>
+					<Field label={m.pf_discount()} hint={m.pf_discount_hint()} error={errors.discountPercent}>
+						{#snippet children(control)}
+							<div class="relative">
+								<input
+									{...control}
+									class="input pr-8 tabular-nums"
+									type="number"
+									min="0"
+									max="90"
+									step="1"
+									inputmode="numeric"
+									bind:value={values.discount}
+								/>
+								<span
+									class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-zinc-400"
+									>%</span
+								>
+							</div>
+						{/snippet}
+					</Field>
+				</div>
+				<div
+					class="flex items-center justify-between rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-5 py-3 text-sm"
+					aria-live="polite"
+				>
+					<span class="text-zinc-500">{m.pf_customer_pays()}</span>
+					<span class="font-semibold text-zinc-900 tabular-nums">
+						{finalPreview === null ? m.products_contact_price() : formatCAD(finalPreview)}
+					</span>
+				</div>
+			</fieldset>
+		</div>
+
+		<!-- Side column -->
+		<fieldset disabled={readOnly || saving} class="min-w-0 space-y-6">
+			<section class="card">
+				<div class="card-header">
+					<h2 class="card-title" id="{uid}-status-title">{m.pf_status()}</h2>
+				</div>
+				<div class="space-y-2 p-4" role="radiogroup" aria-labelledby="{uid}-status-title">
+					{#each STATUSES as status (status)}
+						<label
+							class={[
+								'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-600/30',
+								values.status === status
+									? 'border-brand-300 bg-brand-50'
+									: 'border-zinc-200 hover:border-zinc-300'
+							]}
+						>
+							<input
+								type="radio"
+								name="status"
+								value={status}
+								class="size-4 accent-brand-500"
+								bind:group={values.status}
+							/>
+							<span class="text-sm font-medium text-zinc-900">{productStatusLabel(status)}</span>
+						</label>
+					{/each}
+					{#if errors.status}<p class="text-xs text-red-600">{errors.status}</p>{/if}
+				</div>
+			</section>
+
+			<section class="card">
+				<div class="card-header">
+					<h2 class="card-title">{m.pf_inventory()}</h2>
+				</div>
+				<div class="p-5">
+					<Field label={m.pf_stock()} error={errors.stock}>
+						{#snippet children(control)}
 							<input
 								{...control}
-								class="input font-mono"
-								maxlength="120"
-								autocomplete="off"
-								spellcheck="false"
-								value={values.slug}
-								oninput={(e) => {
-									slugTouched = true;
-									values.slug = e.currentTarget.value.toLowerCase();
-								}}
+								class="input tabular-nums"
+								type="number"
+								min="0"
+								max="1000000"
+								step="1"
+								inputmode="numeric"
+								bind:value={values.stock}
 							/>
-							<button
-								type="button"
-								class="btn-secondary shrink-0"
-								onclick={() => (values.slug = slugify(values.nameEn))}
+						{/snippet}
+					</Field>
+				</div>
+			</section>
+
+			<section class="card">
+				<div class="card-header">
+					<h2 class="card-title">{m.pf_organization()}</h2>
+				</div>
+				<div class="space-y-5 p-5">
+					<fieldset>
+						<legend class="label">
+							{m.pf_categories()}
+							<span class="font-normal text-zinc-400"
+								>{m.pf_categories_selected({ count: values.categoryIds.length })}</span
 							>
-								{m.pf_slug_suggest()}
-							</button>
-						</div>
-					{/snippet}
-				</Field>
-				<Field label={m.pf_status()} error={errors.status}>
-					{#snippet children(control)}
-						<select {...control} class="input" bind:value={values.status}>
-							{#each STATUSES as status (status)}
-								<option value={status}>{productStatusLabel(status)}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-			</div>
-		</section>
+						</legend>
+						{#if categories.length === 0}
+							<p class="text-sm text-zinc-500">{m.pf_no_categories()}</p>
+						{:else}
+							<div class="flex flex-wrap gap-1.5">
+								{#each categories as category (category.id)}
+									{@const selected = values.categoryIds.includes(category.id)}
+									<button
+										type="button"
+										aria-pressed={selected}
+										class={[
+											'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+											selected
+												? 'border-brand-200 bg-brand-200 text-brand-900'
+												: 'border-zinc-300 bg-white text-zinc-700 hover:border-brand-500 hover:text-brand-700'
+										]}
+										onclick={() => toggleCategory(category.id)}
+									>
+										{#if selected}<Icon name="check" size={12} />{/if}
+										{localized(category.name)}
+									</button>
+								{/each}
+							</div>
+						{/if}
+						{#if errors.categoryIds}
+							<p class="mt-2 text-xs text-red-600">{errors.categoryIds}</p>
+						{/if}
+					</fieldset>
 
-		<section class="card p-5">
-			<h2 class="mb-4 text-lg font-semibold">{m.pf_pricing()}</h2>
-			<div class="grid gap-4 md:grid-cols-3">
-				<Field label={m.pf_price()} hint={m.pf_price_hint()} error={errors.priceCents}>
-					{#snippet children(control)}
+					<label class="flex cursor-pointer items-start justify-between gap-3">
+						<span>
+							<span class="flex items-center gap-1.5 text-sm font-medium text-zinc-900">
+								<Icon name="star" size={14} filled={values.featured} class="text-amber-400" />
+								{m.pf_featured()}
+							</span>
+						</span>
 						<input
-							{...control}
-							class="input"
-							inputmode="decimal"
-							placeholder="0.00"
-							bind:value={values.price}
+							type="checkbox"
+							role="switch"
+							class="peer sr-only"
+							bind:checked={values.featured}
 						/>
-					{/snippet}
-				</Field>
-				<Field label={m.pf_discount()} hint={m.pf_discount_hint()} error={errors.discountPercent}>
-					{#snippet children(control)}
-						<input
-							{...control}
-							class="input"
-							type="number"
-							min="0"
-							max="90"
-							step="1"
-							inputmode="numeric"
-							bind:value={values.discount}
-						/>
-					{/snippet}
-				</Field>
-				<Field label={m.pf_stock()} error={errors.stock}>
-					{#snippet children(control)}
-						<input
-							{...control}
-							class="input"
-							type="number"
-							min="0"
-							max="1000000"
-							step="1"
-							inputmode="numeric"
-							bind:value={values.stock}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-			<p class="mt-2 text-sm text-slate-600" aria-live="polite">
-				{finalPreview === null
-					? m.products_contact_price()
-					: m.pf_final_price({ price: formatCAD(finalPreview) })}
-			</p>
-			<label class="mt-4 inline-flex items-center gap-2 text-sm font-medium">
-				<input
-					type="checkbox"
-					class="size-4 rounded border-slate-300"
-					bind:checked={values.featured}
-				/>
-				<Icon name="star" size={16} filled={values.featured} class="text-amber-400" />
-				{m.pf_featured()}
-			</label>
-		</section>
+						<span
+							class="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-zinc-200 transition-colors peer-checked:bg-brand-400 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600/40 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
+							aria-hidden="true"
+						></span>
+					</label>
+				</div>
+			</section>
+		</fieldset>
+	</div>
 
-		<section class="card p-5">
-			<fieldset>
-				<legend class="mb-1 text-lg font-semibold">
-					{m.pf_categories()}
-					<span class="text-sm font-normal text-slate-500"
-						>{m.pf_categories_selected({ count: values.categoryIds.length })}</span
-					>
-				</legend>
-				<p id="{uid}-cat-help" class="mb-3 text-xs text-slate-500">{m.pf_categories_help()}</p>
-				{#if categories.length === 0}
-					<p class="text-sm text-slate-500">{m.pf_no_categories()}</p>
-				{:else}
-					<div class="flex flex-wrap gap-2" aria-describedby="{uid}-cat-help">
-						{#each categories as category (category.id)}
-							{@const selected = values.categoryIds.includes(category.id)}
-							<button
-								type="button"
-								aria-pressed={selected}
-								class={[
-									'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition',
-									selected
-										? 'border-brand-800 bg-brand-800 text-white'
-										: 'border-slate-300 bg-white text-slate-700 hover:border-brand-600'
-								]}
-								onclick={() => toggleCategory(category.id)}
-							>
-								{#if selected}<Icon name="check" size={14} />{/if}
-								{localized(category.name)}
-							</button>
-						{/each}
-					</div>
-				{/if}
-				{#if errors.categoryIds}<p class="mt-2 text-xs text-red-600">{errors.categoryIds}</p>{/if}
-			</fieldset>
-		</section>
-	</fieldset>
-
-	{#if !readOnly}
+	<!-- Contextual save bar: shown while there is something to save. -->
+	{#if !readOnly && (dirty || !product)}
 		<div
-			class="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border"
+			class="fixed inset-x-0 bottom-0 z-30 animate-slide-down border-t border-zinc-200 bg-white/95 shadow-[0_-4px_16px_-8px_rgb(15_23_42/0.15)] backdrop-blur lg:left-60"
 		>
-			{#if dirty}
-				<span class="mr-auto text-sm font-medium text-amber-700" role="status"
-					>{m.pf_unsaved_badge()}</span
+			<div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+				<span
+					class="mr-auto flex min-w-0 items-center gap-2 text-sm font-medium text-zinc-700"
+					role="status"
 				>
-			{/if}
-			<button type="submit" class="btn-primary" disabled={saving}>
-				{#if saving}
-					<span class="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-					></span>
-					{m.common_saving()}
-				{:else}
-					{product ? m.pf_update() : m.pf_create()}
+					{#if dirty}
+						<span class="size-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true"></span>
+						<span class="truncate">{m.pf_unsaved_badge()}</span>
+					{/if}
+				</span>
+				{#if dirty}
+					<button type="button" class="btn-secondary" disabled={saving} onclick={discard}
+						>{m.pf_discard()}</button
+					>
 				{/if}
-			</button>
+				<button type="submit" class="btn-primary min-w-28" disabled={saving}>
+					{#if saving}
+						<span
+							class="size-4 animate-spin rounded-full border-2 border-brand-900/20 border-t-brand-900"
+							aria-hidden="true"
+						></span>
+						{m.common_saving()}
+					{:else}
+						{product ? m.common_save_changes() : m.pf_create()}
+					{/if}
+				</button>
+			</div>
 		</div>
 	{/if}
 </form>

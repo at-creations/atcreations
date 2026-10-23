@@ -56,10 +56,10 @@
 </script>
 
 <RequirePermission permission="audit:read">
-	<PageHeader title={m.audit_title()} subtitle={m.audit_subtitle()} />
+	<PageHeader title={m.audit_title()} />
 
-	<div class="mb-4 flex flex-wrap items-center gap-3 card p-4">
-		<label for="{uid}-resource" class="text-sm font-medium text-slate-700"
+	<div class="mb-4 flex flex-wrap items-center gap-3 card p-3">
+		<label for="{uid}-resource" class="text-sm font-medium text-zinc-700"
 			>{m.audit_filter_resource()}</label
 		>
 		<select
@@ -88,7 +88,7 @@
 		{:else if auditQuery.isPending}
 			<LoadState loading />
 		{:else if entries.length === 0}
-			<p class="p-10 text-center text-slate-500">{m.audit_none()}</p>
+			<p class="p-10 text-center text-zinc-500">{m.audit_none()}</p>
 		{:else}
 			<div class="overflow-x-auto">
 				<table
@@ -97,28 +97,28 @@
 						auditQuery.isPlaceholderData && 'opacity-60'
 					]}
 				>
-					<thead class="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+					<thead class="border-b border-zinc-200 bg-zinc-50/80">
 						<tr>
-							<th scope="col" class="px-4 py-3">{m.audit_col_time()}</th>
-							<th scope="col" class="px-4 py-3">{m.audit_col_actor()}</th>
-							<th scope="col" class="px-4 py-3">{m.audit_col_action()}</th>
-							<th scope="col" class="px-4 py-3">{m.audit_col_resource()}</th>
-							<th scope="col" class="px-4 py-3">{m.audit_col_resource_id()}</th>
+							<th scope="col" class="th">{m.audit_col_time()}</th>
+							<th scope="col" class="th">{m.audit_col_actor()}</th>
+							<th scope="col" class="th">{m.audit_col_action()}</th>
+							<th scope="col" class="th">{m.audit_col_resource()}</th>
+							<th scope="col" class="th">{m.audit_col_resource_id()}</th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-slate-100">
+					<tbody class="divide-y divide-zinc-100">
 						{#each entries as entry (entry.id)}
-							<tr class="hover:bg-slate-50">
-								<td class="px-4 py-3 whitespace-nowrap text-slate-600">
+							<tr class="hover:bg-zinc-50">
+								<td class="td whitespace-nowrap text-zinc-600">
 									<time datetime={entry.at}>{formatDateTime(entry.at)}</time>
 								</td>
-								<td class="px-4 py-3">
+								<td class="td">
 									<span class="block">{entry.actorEmail || '—'}</span>
-									<span class="block font-mono text-xs text-slate-400">{entry.actorId}</span>
+									<span class="block font-mono text-xs text-zinc-400">{entry.actorId}</span>
 								</td>
-								<td class="px-4 py-3 font-mono text-xs">{entry.action}</td>
-								<td class="px-4 py-3">{entry.resource}</td>
-								<td class="px-4 py-3 font-mono text-xs break-all text-slate-600"
+								<td class="td font-mono text-xs">{entry.action}</td>
+								<td class="td">{entry.resource}</td>
+								<td class="td font-mono text-xs break-all text-zinc-600"
 									>{entry.resourceId ?? '—'}</td
 								>
 							</tr>

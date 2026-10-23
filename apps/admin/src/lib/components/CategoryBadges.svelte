@@ -10,14 +10,14 @@
 </script>
 
 {#if !first}
-	<span class="badge bg-slate-100 text-slate-500 italic">{m.products_uncategorized()}</span>
+	<span class="badge bg-zinc-100 text-zinc-500 italic">{m.products_uncategorized()}</span>
 {:else}
 	<span class="inline-flex flex-wrap items-center gap-1">
-		<span class="badge max-w-40 truncate bg-brand-50 text-brand-800">{localized(first.name)}</span>
+		<span class="badge max-w-40 truncate bg-brand-100 text-brand-800">{localized(first.name)}</span>
 		{#if rest.length > 0}
 			<button
 				type="button"
-				class="badge cursor-pointer bg-slate-100 text-slate-700 hover:bg-slate-200"
+				class="badge cursor-pointer bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
 				popovertarget="{uid}-more"
 				aria-label={m.products_all_categories()}
 			>
@@ -26,14 +26,14 @@
 			<div
 				id="{uid}-more"
 				popover="auto"
-				class="m-auto max-w-xs rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
+				class="m-auto max-w-xs rounded-lg border border-zinc-200 bg-white p-3 shadow-xl"
 			>
-				<p class="mb-2 text-xs font-semibold text-slate-500 uppercase">
+				<p class="mb-2 text-xs font-semibold text-zinc-500 uppercase">
 					{m.products_all_categories()}
 				</p>
 				<ul class="flex flex-wrap gap-1">
 					{#each categories as category (category.id)}
-						<li class="badge bg-brand-50 text-brand-800">{localized(category.name)}</li>
+						<li class="badge bg-brand-100 text-brand-800">{localized(category.name)}</li>
 					{/each}
 				</ul>
 			</div>

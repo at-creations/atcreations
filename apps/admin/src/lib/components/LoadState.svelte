@@ -19,9 +19,9 @@
 </script>
 
 {#if loading}
-	<div class="flex items-center justify-center gap-3 p-10 text-slate-500" role="status">
+	<div class="flex items-center justify-center gap-3 p-10 text-zinc-500" role="status">
 		<span
-			class="size-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-800"
+			class="size-5 animate-spin rounded-full border-2 border-zinc-300 border-t-brand-800"
 			aria-hidden="true"
 		></span>
 		<span>{m.common_loading()}</span>
@@ -29,8 +29,8 @@
 {:else if described}
 	<div class="flex flex-col items-center gap-3 p-10 text-center" role="alert">
 		<Icon name="alert" size={28} class="text-red-500" />
-		<p class="font-medium text-slate-800">{described.message}</p>
-		{#if described.detail}<p class="text-sm text-slate-500">{described.detail}</p>{/if}
+		<p class="font-medium text-zinc-800">{described.message}</p>
+		{#if described.detail}<p class="text-sm text-zinc-500">{described.detail}</p>{/if}
 		{#if onretry}
 			<button type="button" class="btn-secondary" onclick={onretry}>{m.common_try_again()}</button>
 		{/if}
