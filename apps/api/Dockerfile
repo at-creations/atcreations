@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.10
 # One build, two images: `--target imgworker` for the image worker, the default target for the API.
 # ---- build ----
-FROM golang:1.27-alpine AS build
+FROM golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS build
 WORKDIR /src
 # nodynamic: the image codecs never try to load native libraries (keeps the binaries static
 # for distroless). wasm2go: the HEIC decoder is compiled Go, with no runtime code generation.
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -ldflags="-s -w" -o /out/imgworker ./cmd/imgworker
 
 # ---- image worker: distroless, no shell, non-root ----
-FROM gcr.io/distroless/static-debian12:nonroot AS imgworker
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS imgworker
 COPY --from=build /out/imgworker /imgworker
 USER nonroot:nonroot
 EXPOSE 9090
@@ -24,7 +24,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/im
 ENTRYPOINT ["/imgworker"]
 
 # ---- API: distroless, no shell, non-root ----
-FROM gcr.io/distroless/static-debian12:nonroot AS api
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS api
 COPY --from=build /out/api /api
 USER nonroot:nonroot
 EXPOSE 8080

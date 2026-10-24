@@ -7,6 +7,7 @@ x-hardening: &hardening
   read_only: true
   security_opt: ["no-new-privileges:true"]
   cap_drop: ["ALL"]
+  pids_limit: 256 # stops a fork bomb or thread leak from exhausting the host
   logging:
     driver: json-file
     options: { max-size: "10m", max-file: "5" }
@@ -14,7 +15,7 @@ x-hardening: &hardening
 services:
   caddy:
     <<: *hardening
-    image: caddy:2.10-alpine
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     cap_add: ["NET_BIND_SERVICE"]
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
@@ -27,6 +28,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     tmpfs: ["/tmp"]
+    cpus: 1.0
     networks:
       edge: { ipv4_address: 172.30.0.10 }
     depends_on:
@@ -50,6 +52,7 @@ services:
       GOMEMLIMIT: 400MiB
     tmpfs: ["/tmp:size=64m"] # multipart uploads spill here
     mem_limit: 512m
+    cpus: 1.5
     networks: [edge, data]
     depends_on:
       mongo: { condition: service_healthy }
@@ -69,6 +72,7 @@ services:
       GOMEMLIMIT: 768MiB
     tmpfs: ["/tmp:size=16m"]
     mem_limit: 1g
+    cpus: 2.0 # image decoding (WORKER_CONCURRENCY) is CPU-bound
     networks: [edge]
 
   storefront:
@@ -84,6 +88,7 @@ services:
       XFF_DEPTH: "1"
     tmpfs: ["/tmp"]
     mem_limit: 384m
+    cpus: 1.0
     networks:
       edge: { ipv4_address: 172.30.0.11 }
     # Any answer below 500 means the server is up and rendering (SvelteKit in distroless: no shell).
@@ -107,6 +112,7 @@ services:
       XFF_DEPTH: "1"
     tmpfs: ["/tmp"]
     mem_limit: 384m
+    cpus: 0.5
     networks: [edge]
     # Any answer below 500 means the server is up and rendering (SvelteKit in distroless: no shell).
     healthcheck:
@@ -118,7 +124,7 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:8.2-alpine
+    image: redis:8.2-alpine@sha256:d1389b3f3f981460b9b0918c4d7390c6e9decb8c69b9f09a02e1b6fd7554ade7
     # Needed only to write the ACL file and drop to the redis user at start.
     cap_add: ["CHOWN", "SETUID", "SETGID"]
     entrypoint: ["/bin/sh", "/usr/local/bin/atc-entrypoint.sh"]
@@ -133,13 +139,15 @@ services:
       timeout: 5s
       retries: 6
     mem_limit: 320m
+    cpus: 0.5
     # No published ports: reachable only from the internal data network.
     networks: [data]
 
   mongo:
-    image: mongo:8.0
+    image: mongo:8.0@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
+    pids_limit: 1024
     # The keyfile is required for auth on a replica set; it must be owned by
     # the mongodb user with 0400 permissions, so it is installed at start.
     entrypoint:
@@ -162,14 +170,18 @@ services:
       # Initiates the single-node replica set on first boot, then reports health.
       test:
         - CMD-SHELL
+        # The password is read inside mongosh, never passed on a command line (visible in ps).
         - >-
-          mongosh --quiet -u root -p "$$(cat /run/secrets/mongo_root_password)" --authenticationDatabase admin --eval
-          "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}).ok }"
+          mongosh --quiet --nodb --eval
+          "const pw = require('fs').readFileSync('/run/secrets/mongo_root_password', 'utf8').trim();
+          db = new Mongo('mongodb://root:' + encodeURIComponent(pw) + '@127.0.0.1:27017/?authSource=admin&directConnection=true').getDB('admin');
+          try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}).ok }"
       interval: 10s
       timeout: 10s
       retries: 12
       start_period: 30s
     mem_limit: 1g
+    cpus: 1.5
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }

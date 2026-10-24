@@ -43,7 +43,8 @@ jobs:
           until curl -fsS http://127.0.0.1:9000/health >/dev/null; do sleep 1; done
           docker run --rm --network host -v "$PWD/../../docker/dev/rustfs-init.sh:/rustfs-init.sh:ro"             -e S3_ENDPOINT=http://127.0.0.1:9000 -e BUCKET=atcreations-dev             -e AWS_ACCESS_KEY_ID=atcreations-dev -e AWS_SECRET_ACCESS_KEY=dev-rustfs-secret-key -e AWS_DEFAULT_REGION=us-east-1             --entrypoint /bin/sh amazon/aws-cli:2.38.4 /rustfs-init.sh
       - name: Integration tests
-        run: go test -race -tags integration ./internal/ ./internal/platform/redisx/ ./internal/media/
+        # Every package: integration-tagged tests skip themselves when their service is missing.
+        run: go test -race -tags integration ./...
         env:
           REDIS_TEST_URL: redis://:ci-redis@127.0.0.1:6379/15
           S3_TEST_ENDPOINT: http://127.0.0.1:9000
@@ -103,6 +104,15 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          format: sarif
+          output: trivy.sarif
+      # Findings appear in the repository's Security tab (what security-events: write is for).
+      - name: Upload Trivy results
+        if: always() && hashFiles('trivy.sarif') != ''
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-fs
 
   images:
     name: Container images build

@@ -19,7 +19,7 @@
 | Weak default secrets (`JWT_SECRET="secret"`), no startup validation | Forgeable tokens | No first-party JWTs; config refuses to start with missing/unsafe values (`config.validate`) |
 | Public `/health` exposed env, memory, uptime | Recon | `/healthz` and `/readyz` return only status |
 | Admin route protection was client-side only | Data exposure / UX bypass | Server-side guard in SvelteKit hooks **and** every API route enforces auth + permission |
-| CI deployed with `ssh-keyscan` (TOFU), `rsync --delete`, built on the server; AI bot sent full diffs to a third party | Supply chain / MITM | Pinned actions (SHA), CodeQL, Trivy, govulncheck, `pnpm audit`, signed provenance + SBOM, pinned host key, immutable image tags, rollback |
+| CI deployed with `ssh-keyscan` (TOFU), `rsync --delete`, built on the server; AI bot sent full diffs to a third party | Supply chain / MITM | Pinned actions (SHA), CodeQL, Trivy, govulncheck, `pnpm audit`, signed build provenance (GitHub artifact attestations) + SBOM, base images pinned by digest, pinned host key, immutable image tags, rollback |
 
 ## Controls
 
@@ -59,7 +59,7 @@
 - [ ] R2: dedicated bucket + API token scoped to that bucket (Object Read & Write); public access only through the CDN custom domain.
 - [ ] SendGrid: domain authentication (SPF/DKIM), DMARC on the sending domain.
 - [ ] GitHub: branch protection on `main` (required checks: CI, CodeQL), `production` environment with required reviewers, secrets `DEPLOY_SSH_KEY` (deploy-only user), `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER`.
-- [ ] Host: firewall allows only 22/80/443, SSH keys only, unattended security upgrades, Docker log rotation, off-host backup copy, restore drill.
+- [ ] Host: firewall allows only 22/80/443, SSH keys only, unattended security upgrades, Docker log rotation, `env/backup.env` with an age recipient and an rclone remote (encrypted off-host copy), restore drill.
 
 ## Reporting a vulnerability
 

@@ -5,6 +5,10 @@
 		# client-supplied X-Forwarded-For and sends the real peer address.
 		timeouts {
 			read_header 10s
+			# Bodies (up to 26 MB image uploads) must arrive within 2 minutes, so a client
+			# trickling bytes cannot hold a connection open indefinitely.
+			read_body 2m
+			write 2m
 			idle 2m
 		}
 	}
