@@ -104,6 +104,8 @@ type Owners interface {
 	AttachProductImage(ctx context.Context, actor string, id bson.ObjectID, img catalog.Image) error
 	SetCategoryImageKey(ctx context.Context, id bson.ObjectID, img catalog.Image) error
 	CategoryExists(ctx context.Context, id bson.ObjectID) (bool, error)
+	ImagesWithoutVariants(ctx context.Context, limit int, skip map[string]bool) ([]catalog.ImageNeedingVariants, error)
+	SetImageVariants(ctx context.Context, img catalog.ImageNeedingVariants, variants []catalog.ImageVariant) error
 }
 
 type Options struct {
@@ -363,6 +365,7 @@ func (s *Service) Sweep(ctx context.Context) (int, error) {
 }
 
 func (s *Service) deleteObjects(ctx context.Context, keys ...string) {
+	keys = media.WithVariants(keys...) // an output's smaller copies go with it
 	if len(keys) == 0 {
 		return
 	}

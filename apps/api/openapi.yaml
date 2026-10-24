@@ -109,6 +109,16 @@ components:
         width: { type: integer }
         height: { type: integer }
         alt: { $ref: '#/components/schemas/LocalizedText' }
+        variants:
+          type: array
+          description: Smaller copies (400/800/1600 px on the longest edge, smallest first) for srcset; the main url is the largest. Missing for images not processed yet.
+          items:
+            type: object
+            required: [url, width, height]
+            properties:
+              url: { type: string, format: uri }
+              width: { type: integer }
+              height: { type: integer }
 
     CategoryRef:
       type: object

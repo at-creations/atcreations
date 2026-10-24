@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import type { AdminCategory } from '@atcreations/api-types';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { resolve } from '$app/paths';
@@ -144,7 +145,7 @@
 							</span>
 						{/if}
 						<Thumb
-							src={category.image?.url}
+							src={imageUrl(category.image, 96)}
 							class="size-12 sm:size-14"
 							rounded="rounded-xl"
 							alt=""

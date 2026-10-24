@@ -221,3 +221,35 @@ func TestErrorCode(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessMakesVariants(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 1200, 600))
+	p, err := Process(context.Background(), encodePNG(t, img), Options{Variants: VariantEdges})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1600 is not below the image's own 1200 px edge, so only 400 and 800 are made.
+	if len(p.Variants) != 2 || p.Variants[0].Width != 400 || p.Variants[0].Height != 200 || p.Variants[1].Width != 800 {
+		t.Fatalf("variants = %+v", p.Variants)
+	}
+	only, err := Process(context.Background(), encodePNG(t, img), Options{Variants: VariantEdges, VariantsOnly: true})
+	if err != nil || len(only.Data) != 0 || len(only.Variants) != 2 {
+		t.Fatalf("variants only: %d bytes, %d variants, %v", len(only.Data), len(only.Variants), err)
+	}
+}
+
+func TestVariantKeys(t *testing.T) {
+	if k := VariantKey("products/p1/abc.webp", 800); k != "products/p1/abc-800.webp" {
+		t.Fatalf("VariantKey = %q", k)
+	}
+	for in, want := range map[string]string{
+		"products/p1/abc-800.webp": "products/p1/abc.webp",
+		"products/p1/abc.webp":     "products/p1/abc.webp",
+		"products/p1/abc-123.webp": "products/p1/abc-123.webp", // not a variant size
+		"categories/c/x-1600.webp": "categories/c/x.webp",
+	} {
+		if got := BaseKey(in); got != want {
+			t.Errorf("BaseKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

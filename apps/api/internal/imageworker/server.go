@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -93,13 +94,15 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 	switch {
 	case errors.Is(err, media.ErrObjectNotFound):
 		// A retry after a lost response: the original was already consumed.
-		if res, ok := s.existingOutput(ctx, req); ok {
+		if res, ok := s.existingOutput(ctx, req); ok && !req.GetVariantsOnly() {
 			log.Info("original already processed; reporting existing output")
 			return sendResult(stream, res)
 		}
 		return status.Error(codes.NotFound, "original not found")
 	case errors.Is(err, media.ErrTooLarge):
-		s.discard(ctx, log, req.GetSourceKey())
+		if !req.GetVariantsOnly() {
+			s.discard(ctx, log, req.GetSourceKey())
+		}
 		return rejected(media.CodeTooLarge, "file too large")
 	case err != nil:
 		log.Warn("read original failed", "err", err)
@@ -107,8 +110,13 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 	}
 
 	started := time.Now()
+	edges := make([]int, len(req.GetVariantEdges()))
+	for i, e := range req.GetVariantEdges() {
+		edges[i] = int(e)
+	}
 	out, err := media.Process(ctx, raw, media.Options{
 		MaxEdge: int(req.GetMaxEdge()), Quality: int(req.GetQuality()),
+		Variants: edges, VariantsOnly: req.GetVariantsOnly(),
 		OnStage: func(st media.Stage) {
 			switch st {
 			case media.StageDecoding:
@@ -123,8 +131,11 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 	if err != nil {
 		var invalid *httpx.Error
 		if errors.As(err, &invalid) {
-			// Not a usable image: it can never succeed, so remove the original now.
-			s.discard(ctx, log, req.GetSourceKey())
+			// Not a usable image: it can never succeed, so remove the original now (never an
+			// existing image whose variants were requested).
+			if !req.GetVariantsOnly() {
+				s.discard(ctx, log, req.GetSourceKey())
+			}
 			msg := invalid.Detail
 			if len(invalid.Fields) > 0 {
 				msg = invalid.Fields[0].Message
@@ -136,23 +147,40 @@ func (s *Server) ProcessImage(req *imagingv1.ProcessImageRequest, stream imaging
 	}
 
 	progress(imagingv1.Stage_STAGE_UPLOADING)
-	err = s.storage.PutObject(ctx, media.PutInput{
-		Key: req.GetOutputKey(), Data: out.Data, ContentType: out.ContentType,
-		Metadata: map[string]string{metaWidth: strconv.Itoa(out.Width), metaHeight: strconv.Itoa(out.Height)},
-	})
-	if err != nil {
-		log.Warn("write output failed", "err", err)
-		return transient(ctx, err)
+	// Variants first: the main output's existence marks the job as complete (existingOutput).
+	variants := make([]*imagingv1.Variant, 0, len(out.Variants))
+	for _, v := range out.Variants {
+		key := media.VariantKey(req.GetOutputKey(), v.Edge)
+		if err := s.put(ctx, key, v.Data, v.Width, v.Height); err != nil {
+			log.Warn("write variant failed", "err", err)
+			return transient(ctx, err)
+		}
+		variants = append(variants, &imagingv1.Variant{Key: key, Width: uint32(v.Width), Height: uint32(v.Height), Edge: uint32(v.Edge)}) //nolint:gosec // bounded by maxEdge
 	}
-	// The output is safe; the original is no longer needed. A failed delete is not fatal: the
-	// API deletes it again when it records the result, and the staging sweep catches the rest.
-	s.discard(ctx, log, req.GetSourceKey())
+	if !req.GetVariantsOnly() {
+		if err := s.put(ctx, req.GetOutputKey(), out.Data, out.Width, out.Height); err != nil {
+			log.Warn("write output failed", "err", err)
+			return transient(ctx, err)
+		}
+		// The output is safe; the original is no longer needed. A failed delete is not fatal:
+		// the API deletes it again when it records the result, and the staging sweep catches
+		// the rest.
+		s.discard(ctx, log, req.GetSourceKey())
+	}
 
 	log.Info("image processed", "output", req.GetOutputKey(), "width", out.Width, "height", out.Height,
-		"bytes", len(out.Data), "ms", time.Since(started).Milliseconds())
+		"bytes", len(out.Data), "variants", len(variants), "variants_only", req.GetVariantsOnly(),
+		"ms", time.Since(started).Milliseconds())
 	return sendResult(stream, &imagingv1.Result{
 		OutputKey: req.GetOutputKey(), Width: uint32(out.Width), Height: uint32(out.Height), //nolint:gosec // bounded by maxEdge
-		SizeBytes: uint64(len(out.Data)), ContentType: out.ContentType,
+		SizeBytes: uint64(len(out.Data)), ContentType: out.ContentType, Variants: variants,
+	})
+}
+
+func (s *Server) put(ctx context.Context, key string, data []byte, w, h int) error {
+	return s.storage.PutObject(ctx, media.PutInput{
+		Key: key, Data: data, ContentType: "image/webp",
+		Metadata: map[string]string{metaWidth: strconv.Itoa(w), metaHeight: strconv.Itoa(h)},
 	})
 }
 
@@ -171,10 +199,24 @@ func (s *Server) existingOutput(ctx context.Context, req *imagingv1.ProcessImage
 	if errW != nil || errH != nil || w <= 0 || h <= 0 {
 		return nil, false
 	}
-	return &imagingv1.Result{
+	res := &imagingv1.Result{
 		OutputKey: req.GetOutputKey(), Width: uint32(w), Height: uint32(h), //nolint:gosec // parsed from our own metadata
 		SizeBytes: uint64(max(info.Size, 0)), ContentType: "image/webp",
-	}, true
+	}
+	// Variants were written before the output, so the ones requested exist too.
+	for _, edge := range req.GetVariantEdges() {
+		key := media.VariantKey(req.GetOutputKey(), int(edge))
+		vi, err := s.storage.Head(ctx, key)
+		if err != nil {
+			continue // not produced (the image is smaller than this edge)
+		}
+		vw, errW := strconv.Atoi(vi.Metadata[metaWidth])
+		vh, errH := strconv.Atoi(vi.Metadata[metaHeight])
+		if errW == nil && errH == nil {
+			res.Variants = append(res.Variants, &imagingv1.Variant{Key: key, Width: uint32(vw), Height: uint32(vh), Edge: edge}) //nolint:gosec // parsed from our own metadata
+		}
+	}
+	return res, true
 }
 
 func (s *Server) discard(ctx context.Context, log *slog.Logger, key string) {
@@ -196,8 +238,26 @@ func transient(ctx context.Context, err error) error {
 
 func validate(req *imagingv1.ProcessImageRequest) error {
 	src, dst := req.GetSourceKey(), req.GetOutputKey()
+	for _, e := range req.GetVariantEdges() {
+		if e < minEdge || e > maxEdge {
+			return fmt.Errorf("variant_edges must be %d-%d", minEdge, maxEdge)
+		}
+	}
 	switch {
-	case !strings.HasPrefix(src, media.UploadsPrefix) || strings.Contains(src, ".."):
+	case req.GetVariantsOnly() && src != dst:
+		return errors.New("with variants_only, source_key must equal output_key")
+	case req.GetVariantsOnly():
+		// An existing image (migrated ones may have a .jpg key holding WebP data): its copies
+		// keep its extension, and the stored content type tells browsers the real format.
+		ext := path.Ext(dst)
+		if strings.HasPrefix(dst, media.UploadsPrefix) || strings.Contains(dst, "..") || (ext != ".webp" && ext != ".jpg" && ext != ".jpeg" && ext != ".png") {
+			return errors.New("output_key must be an image key outside the uploads area")
+		}
+		if req.GetMaxEdge() < minEdge || req.GetMaxEdge() > maxEdge || req.GetQuality() < 1 || req.GetQuality() > 100 {
+			return errors.New("max_edge or quality out of range")
+		}
+		return nil
+	case !req.GetVariantsOnly() && (!strings.HasPrefix(src, media.UploadsPrefix) || strings.Contains(src, "..")):
 		return errors.New("source_key must be in the uploads area")
 	case dst == "" || strings.HasPrefix(dst, media.UploadsPrefix) || strings.Contains(dst, "..") || !strings.HasSuffix(dst, ".webp"):
 		return errors.New("output_key must be a .webp key outside the uploads area")

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { srcset } from '$lib/images';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import X from '@lucide/svelte/icons/x';
@@ -71,6 +72,8 @@
 				{#key index}
 					<img
 						src={current.url}
+						srcset={srcset(current)}
+						sizes="100vw"
 						alt={current.alt}
 						width={current.width}
 						height={current.height}

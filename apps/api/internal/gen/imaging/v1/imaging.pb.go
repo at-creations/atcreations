@@ -96,7 +96,11 @@ type ProcessImageRequest struct {
 	// Longest edge of the result in pixels; larger images are downscaled, smaller ones kept.
 	MaxEdge uint32 `protobuf:"varint,4,opt,name=max_edge,json=maxEdge,proto3" json:"max_edge,omitempty"`
 	// WebP quality, 1-100.
-	Quality       uint32 `protobuf:"varint,5,opt,name=quality,proto3" json:"quality,omitempty"`
+	Quality uint32 `protobuf:"varint,5,opt,name=quality,proto3" json:"quality,omitempty"`
+	// Longest edges of smaller copies to write; edges not below the image's own are skipped.
+	VariantEdges []uint32 `protobuf:"varint,6,rep,packed,name=variant_edges,json=variantEdges,proto3" json:"variant_edges,omitempty"`
+	// Add variants to an existing image instead of processing an upload.
+	VariantsOnly  bool `protobuf:"varint,7,opt,name=variants_only,json=variantsOnly,proto3" json:"variants_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -164,6 +168,20 @@ func (x *ProcessImageRequest) GetQuality() uint32 {
 		return x.Quality
 	}
 	return 0
+}
+
+func (x *ProcessImageRequest) GetVariantEdges() []uint32 {
+	if x != nil {
+		return x.VariantEdges
+	}
+	return nil
+}
+
+func (x *ProcessImageRequest) GetVariantsOnly() bool {
+	if x != nil {
+		return x.VariantsOnly
+	}
+	return false
 }
 
 type ProcessImageResponse struct {
@@ -308,6 +326,7 @@ type Result struct {
 	Height        uint32                 `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
 	SizeBytes     uint64                 `protobuf:"varint,4,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	ContentType   string                 `protobuf:"bytes,5,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Variants      []*Variant             `protobuf:"bytes,6,rep,name=variants,proto3" json:"variants,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -377,12 +396,88 @@ func (x *Result) GetContentType() string {
 	return ""
 }
 
+func (x *Result) GetVariants() []*Variant {
+	if x != nil {
+		return x.Variants
+	}
+	return nil
+}
+
+type Variant struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Key    string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Width  uint32                 `protobuf:"varint,2,opt,name=width,proto3" json:"width,omitempty"`
+	Height uint32                 `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
+	// The requested longest edge.
+	Edge          uint32 `protobuf:"varint,4,opt,name=edge,proto3" json:"edge,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Variant) Reset() {
+	*x = Variant{}
+	mi := &file_imaging_v1_imaging_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Variant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Variant) ProtoMessage() {}
+
+func (x *Variant) ProtoReflect() protoreflect.Message {
+	mi := &file_imaging_v1_imaging_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Variant.ProtoReflect.Descriptor instead.
+func (*Variant) Descriptor() ([]byte, []int) {
+	return file_imaging_v1_imaging_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Variant) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *Variant) GetWidth() uint32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *Variant) GetHeight() uint32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *Variant) GetEdge() uint32 {
+	if x != nil {
+		return x.Edge
+	}
+	return 0
+}
+
 var File_imaging_v1_imaging_proto protoreflect.FileDescriptor
 
 const file_imaging_v1_imaging_proto_rawDesc = "" +
 	"\n" +
 	"\x18imaging/v1/imaging.proto\x12\n" +
-	"imaging.v1\"\x9f\x01\n" +
+	"imaging.v1\"\xe9\x01\n" +
 	"\x13ProcessImageRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1d\n" +
 	"\n" +
@@ -390,14 +485,16 @@ const file_imaging_v1_imaging_proto_rawDesc = "" +
 	"\n" +
 	"output_key\x18\x03 \x01(\tR\toutputKey\x12\x19\n" +
 	"\bmax_edge\x18\x04 \x01(\rR\amaxEdge\x12\x18\n" +
-	"\aquality\x18\x05 \x01(\rR\aquality\"\x81\x01\n" +
+	"\aquality\x18\x05 \x01(\rR\aquality\x12#\n" +
+	"\rvariant_edges\x18\x06 \x03(\rR\fvariantEdges\x12#\n" +
+	"\rvariants_only\x18\a \x01(\bR\fvariantsOnly\"\x81\x01\n" +
 	"\x14ProcessImageResponse\x122\n" +
 	"\bprogress\x18\x01 \x01(\v2\x14.imaging.v1.ProgressH\x00R\bprogress\x12,\n" +
 	"\x06result\x18\x02 \x01(\v2\x12.imaging.v1.ResultH\x00R\x06resultB\a\n" +
 	"\x05event\"M\n" +
 	"\bProgress\x12'\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\x11.imaging.v1.StageR\x05stage\x12\x18\n" +
-	"\apercent\x18\x02 \x01(\rR\apercent\"\x97\x01\n" +
+	"\apercent\x18\x02 \x01(\rR\apercent\"\xc8\x01\n" +
 	"\x06Result\x12\x1d\n" +
 	"\n" +
 	"output_key\x18\x01 \x01(\tR\toutputKey\x12\x14\n" +
@@ -405,7 +502,13 @@ const file_imaging_v1_imaging_proto_rawDesc = "" +
 	"\x06height\x18\x03 \x01(\rR\x06height\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x04 \x01(\x04R\tsizeBytes\x12!\n" +
-	"\fcontent_type\x18\x05 \x01(\tR\vcontentType*\x99\x01\n" +
+	"\fcontent_type\x18\x05 \x01(\tR\vcontentType\x12/\n" +
+	"\bvariants\x18\x06 \x03(\v2\x13.imaging.v1.VariantR\bvariants\"]\n" +
+	"\aVariant\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05width\x18\x02 \x01(\rR\x05width\x12\x16\n" +
+	"\x06height\x18\x03 \x01(\rR\x06height\x12\x12\n" +
+	"\x04edge\x18\x04 \x01(\rR\x04edge*\x99\x01\n" +
 	"\x05Stage\x12\x15\n" +
 	"\x11STAGE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTAGE_WAITING\x10\x01\x12\x15\n" +
@@ -430,25 +533,27 @@ func file_imaging_v1_imaging_proto_rawDescGZIP() []byte {
 }
 
 var file_imaging_v1_imaging_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_imaging_v1_imaging_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_imaging_v1_imaging_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_imaging_v1_imaging_proto_goTypes = []any{
 	(Stage)(0),                   // 0: imaging.v1.Stage
 	(*ProcessImageRequest)(nil),  // 1: imaging.v1.ProcessImageRequest
 	(*ProcessImageResponse)(nil), // 2: imaging.v1.ProcessImageResponse
 	(*Progress)(nil),             // 3: imaging.v1.Progress
 	(*Result)(nil),               // 4: imaging.v1.Result
+	(*Variant)(nil),              // 5: imaging.v1.Variant
 }
 var file_imaging_v1_imaging_proto_depIdxs = []int32{
 	3, // 0: imaging.v1.ProcessImageResponse.progress:type_name -> imaging.v1.Progress
 	4, // 1: imaging.v1.ProcessImageResponse.result:type_name -> imaging.v1.Result
 	0, // 2: imaging.v1.Progress.stage:type_name -> imaging.v1.Stage
-	1, // 3: imaging.v1.ImageWorkerService.ProcessImage:input_type -> imaging.v1.ProcessImageRequest
-	2, // 4: imaging.v1.ImageWorkerService.ProcessImage:output_type -> imaging.v1.ProcessImageResponse
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 3: imaging.v1.Result.variants:type_name -> imaging.v1.Variant
+	1, // 4: imaging.v1.ImageWorkerService.ProcessImage:input_type -> imaging.v1.ProcessImageRequest
+	2, // 5: imaging.v1.ImageWorkerService.ProcessImage:output_type -> imaging.v1.ProcessImageResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_imaging_v1_imaging_proto_init() }
@@ -466,7 +571,7 @@ func file_imaging_v1_imaging_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_imaging_v1_imaging_proto_rawDesc), len(file_imaging_v1_imaging_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

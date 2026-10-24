@@ -122,7 +122,11 @@ func (s *Service) imageDTO(img *Image) *ImageDTO {
 	if img == nil {
 		return nil
 	}
-	return &ImageDTO{ID: img.ID, Key: img.Key, URL: s.storage.URL(img.Key), Width: img.Width, Height: img.Height, Alt: img.Alt}
+	dto := &ImageDTO{ID: img.ID, Key: img.Key, URL: s.storage.URL(img.Key), Width: img.Width, Height: img.Height, Alt: img.Alt}
+	for _, v := range img.Variants {
+		dto.Variants = append(dto.Variants, ImageVariantDTO{URL: s.storage.URL(v.Key), Width: v.Width, Height: v.Height})
+	}
+	return dto
 }
 
 func (s *Service) categoryDTO(c *Category) CategoryDTO {
@@ -537,6 +541,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id bson.ObjectID) error {
 
 // deleteObjects removes objects best-effort; the nightly orphan sweep catches failures.
 func (s *Service) deleteObjects(ctx context.Context, keys ...string) {
+	keys = media.WithVariants(keys...) // an image's smaller copies go with it
 	if len(keys) == 0 {
 		return
 	}
@@ -824,9 +829,18 @@ func (s *Service) RemoveCategoryImage(ctx context.Context, id bson.ObjectID) (Ca
 // ReferencedKeys returns every object key referenced by products and categories.
 // referenced returns which of keys are still used by a product, a category or an order line
 // (orders keep showing the image they were sold with). Each lookup is an indexed $in.
+// A variant ("x-800.webp") is referenced exactly when its main image ("x.webp") is.
 func (s *Service) referenced(ctx context.Context, keys []string) (map[string]bool, error) {
-	used := make(map[string]bool, len(keys))
-	in := bson.M{"$in": keys}
+	bases := make([]string, 0, len(keys))
+	seen := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		if b := media.BaseKey(k); !seen[b] {
+			seen[b] = true
+			bases = append(bases, b)
+		}
+	}
+	usedBase := make(map[string]bool, len(bases))
+	in := bson.M{"$in": bases}
 	lookups := []struct {
 		coll  *mongo.Collection
 		field string
@@ -841,8 +855,12 @@ func (s *Service) referenced(ctx context.Context, keys []string) (map[string]boo
 			return nil, err
 		}
 		for _, k := range found {
-			used[k] = true
+			usedBase[k] = true
 		}
+	}
+	used := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		used[k] = usedBase[media.BaseKey(k)]
 	}
 	return used, nil
 }

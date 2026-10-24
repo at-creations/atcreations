@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { GRID_SIZES, srcset } from '$lib/images';
 	import type { PublicProduct } from '@atcreations/api-types';
 	import ImageOff from '@lucide/svelte/icons/image-off';
 	import { t, type Locale } from '$lib/i18n';
@@ -26,6 +27,8 @@
 		{#if cover}
 			<img
 				src={cover.url}
+				srcset={srcset(cover)}
+				sizes={GRID_SIZES}
 				alt={name}
 				width={cover.width}
 				height={cover.height}

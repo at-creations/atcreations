@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { resolve } from '$app/paths';
 	import StatTile from '$lib/components/charts/StatTile.svelte';
@@ -240,7 +241,7 @@
 						<li>
 							<a href={resolve(`/products/${product.id}`)} class="group block">
 								<Thumb
-									src={product.images[0]?.url}
+									src={imageUrl(product.images[0], 400)}
 									class="aspect-square w-full"
 									rounded="rounded-xl"
 									iconSize={24}
@@ -370,7 +371,7 @@
 							href={resolve(`/products/${product.id}`)}
 							class="flex items-center gap-3 px-5 py-2.5 hover:bg-zinc-50"
 						>
-							<Thumb src={product.images[0]?.url} class="size-9" />
+							<Thumb src={imageUrl(product.images[0], 96)} class="size-9" />
 							<span class="min-w-0 flex-1 truncate text-sm text-zinc-800"
 								>{localized(product.name)}</span
 							>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -75,7 +76,11 @@
 		back={{ href: resolve('/categories'), label: m.nav_categories() }}
 	>
 		{#snippet leading()}
-			<Thumb src={category.image?.url} class="hidden size-12 sm:flex" rounded="rounded-xl" />
+			<Thumb
+				src={imageUrl(category.image, 96)}
+				class="hidden size-12 sm:flex"
+				rounded="rounded-xl"
+			/>
 		{/snippet}
 		{#snippet actions()}
 			{#if session.can('categories:write')}

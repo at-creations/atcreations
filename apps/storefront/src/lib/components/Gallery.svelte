@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sized, srcset } from '$lib/images';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -60,6 +61,8 @@
 				{#key index}
 					<img
 						src={current.url}
+						srcset={srcset(current)}
+						sizes="(min-width: 1280px) 600px, (min-width: 1024px) 50vw, 100vw"
 						alt={current.alt}
 						width={current.width}
 						height={current.height}
@@ -121,7 +124,7 @@
 						aria-current={i === index ? 'true' : undefined}
 						onclick={() => (index = i)}
 					>
-						<img src={image.url} alt="" loading="lazy" class="size-full object-cover" />
+						<img src={sized(image, 160)} alt="" loading="lazy" class="size-full object-cover" />
 					</button>
 				</li>
 			{/each}

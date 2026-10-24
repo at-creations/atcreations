@@ -2045,6 +2045,13 @@ export interface components {
             width: number;
             height: number;
             alt?: components["schemas"]["LocalizedText"];
+            /** @description Smaller copies (400/800/1600 px on the longest edge, smallest first) for srcset; the main url is the largest. Missing for images not processed yet. */
+            variants?: {
+                /** Format: uri */
+                url: string;
+                width: number;
+                height: number;
+            }[];
         };
         CategoryRef: {
             id: components["schemas"]["ObjectID"];

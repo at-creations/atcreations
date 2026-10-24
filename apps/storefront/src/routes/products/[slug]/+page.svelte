@@ -27,7 +27,8 @@
 			url: image.url,
 			alt: t(image.alt, locale) || name,
 			width: image.width,
-			height: image.height
+			height: image.height,
+			variants: image.variants
 		}))
 	);
 

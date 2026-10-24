@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -91,7 +92,11 @@
 		back={{ href: resolve('/products'), label: m.nav_products() }}
 	>
 		{#snippet leading()}
-			<Thumb src={product!.images[0]?.url} class="hidden size-12 sm:flex" rounded="rounded-xl" />
+			<Thumb
+				src={imageUrl(product!.images[0], 96)}
+				class="hidden size-12 sm:flex"
+				rounded="rounded-xl"
+			/>
 		{/snippet}
 		{#snippet meta()}
 			<StatusBadge kind="product" value={product!.status} />
@@ -117,7 +122,11 @@
 		{/snippet}
 	</PageHeader>
 	{#key product.id}
-		<ProductForm {product} categories={categoriesList.data} cover={product.images[0]?.url}>
+		<ProductForm
+			{product}
+			categories={categoriesList.data}
+			cover={imageUrl(product.images[0], 800)}
+		>
 			{#snippet media()}
 				<ProductImages product={product!} />
 			{/snippet}

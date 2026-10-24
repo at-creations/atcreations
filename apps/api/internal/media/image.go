@@ -12,6 +12,11 @@ import (
 	_ "image/jpeg" // register decoders
 	_ "image/png"
 	"net/http"
+	"path"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/gen2brain/heic"
 	"github.com/gen2brain/webp"
@@ -67,10 +72,68 @@ func init() {
 
 // Processed is a re-encoded image ready to store.
 type Processed struct {
-	Data          []byte
+	Data          []byte // empty with Options.VariantsOnly
 	ContentType   string
 	Ext           string
 	Width, Height int
+	Variants      []Variant
+}
+
+// Variant is a smaller copy of an image for responsive loading (srcset).
+type Variant struct {
+	Edge          int // the requested longest edge
+	Data          []byte
+	Width, Height int
+}
+
+// VariantEdges are the longest edges (px) of the smaller copies stored next to every image,
+// so pages can load the size they display. Only edges below the image's own are produced.
+var VariantEdges = []int{400, 800, 1600}
+
+// VariantKey is where the edge-px variant of the image stored at key lives ("a/b.webp" →
+// "a/b-800.webp"). Deriving it from the key lets any cleanup delete variants by name.
+func VariantKey(key string, edge int) string {
+	ext := path.Ext(key)
+	return strings.TrimSuffix(key, ext) + "-" + strconv.Itoa(edge) + ext
+}
+
+// VariantKeys returns the keys of every possible variant of key.
+func VariantKeys(key string) []string {
+	out := make([]string, len(VariantEdges))
+	for i, e := range VariantEdges {
+		out[i] = VariantKey(key, e)
+	}
+	return out
+}
+
+// WithVariants returns keys plus the variant keys of every stored image among them (originals
+// in the uploads area have none), so deleting an image also deletes its smaller copies.
+func WithVariants(keys ...string) []string {
+	out := make([]string, 0, len(keys)*(1+len(VariantEdges)))
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		out = append(out, k)
+		if !strings.HasPrefix(k, UploadsPrefix) && BaseKey(k) == k {
+			out = append(out, VariantKeys(k)...)
+		}
+	}
+	return out
+}
+
+var variantSuffix = regexp.MustCompile(`-(\d+)(\.[a-z0-9]+)$`)
+
+// BaseKey returns the main image key of a variant key, or key itself if it is not a variant.
+func BaseKey(key string) string {
+	m := variantSuffix.FindStringSubmatchIndex(key)
+	if m == nil {
+		return key
+	}
+	if edge, err := strconv.Atoi(key[m[2]:m[3]]); err != nil || !slices.Contains(VariantEdges, edge) {
+		return key
+	}
+	return key[:m[0]] + key[m[4]:m[5]]
 }
 
 var (
@@ -130,6 +193,10 @@ type Options struct {
 	Quality int
 	// OnStage, when set, is called as processing enters each stage (for progress reporting).
 	OnStage func(Stage)
+	// Variants lists longest edges of smaller copies to produce (see VariantEdges).
+	Variants []int
+	// VariantsOnly skips encoding the main image (adding variants to an existing image).
+	VariantsOnly bool
 }
 
 // Stage of Process, reported through Options.OnStage.
@@ -179,11 +246,36 @@ func Process(ctx context.Context, raw []byte, opts Options) (*Processed, error) 
 	b := img.Bounds()
 
 	stage(StageEncoding)
-	var out bytes.Buffer
-	if err := webp.Encode(&out, img, webp.Options{Quality: opts.Quality, Method: 4}); err != nil {
-		return nil, err
+	encode := func(m image.Image) ([]byte, error) {
+		var out bytes.Buffer
+		if err := webp.Encode(&out, m, webp.Options{Quality: opts.Quality, Method: 4}); err != nil {
+			return nil, err
+		}
+		return out.Bytes(), nil
 	}
-	return &Processed{Data: out.Bytes(), ContentType: "image/webp", Ext: "webp", Width: b.Dx(), Height: b.Dy()}, nil
+	p := &Processed{ContentType: "image/webp", Ext: "webp", Width: b.Dx(), Height: b.Dy()}
+	if !opts.VariantsOnly {
+		if p.Data, err = encode(img); err != nil {
+			return nil, err
+		}
+	}
+	// Variants are scaled down from the (already downsized) main image.
+	for _, edge := range opts.Variants {
+		if edge <= 0 || edge >= max(b.Dx(), b.Dy()) {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		small := downscale(img, edge)
+		data, err := encode(small)
+		if err != nil {
+			return nil, err
+		}
+		sb := small.Bounds()
+		p.Variants = append(p.Variants, Variant{Edge: edge, Data: data, Width: sb.Dx(), Height: sb.Dy()})
+	}
+	return p, nil
 }
 
 func downscale(img image.Image, maxEdge int) image.Image {

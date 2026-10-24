@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import type { Product, ProductStatus } from '@atcreations/api-types';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { Popover } from 'bits-ui';
@@ -489,7 +490,7 @@
 							>
 								<td class="td pl-5">
 									<div class="flex items-center gap-3">
-										<Thumb src={product.images[0]?.url} class="size-11" />
+										<Thumb src={imageUrl(product.images[0], 96)} class="size-11" />
 										<div class="min-w-0">
 											<a
 												class="flex max-w-72 items-center gap-1.5 font-medium text-zinc-900 group-hover:text-brand-700"

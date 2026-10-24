@@ -218,3 +218,42 @@ func TestProcessImageReportsErrorCode(t *testing.T) {
 		t.Fatal("damaged original must be deleted")
 	}
 }
+
+func TestProcessImageWritesVariants(t *testing.T) {
+	store := mediatest.New()
+	_ = store.Put(context.Background(), "uploads/products/p1/a.png", pngBytes(t, 800, 400), "image/png")
+	c := start(t, store)
+	r := req("uploads/products/p1/a.png", "products/p1/j1.webp")
+	r.MaxEdge, r.VariantEdges = 600, []uint32{100, 300, 900}
+	_, res, err := run(t, c, authed(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 900 is not below the 600 px result, so it is skipped.
+	if len(res.GetVariants()) != 2 || res.GetVariants()[0].GetWidth() != 100 || res.GetVariants()[1].GetKey() != "products/p1/j1-300.webp" {
+		t.Fatalf("variants = %v", res.GetVariants())
+	}
+	for _, k := range []string{"products/p1/j1.webp", "products/p1/j1-100.webp", "products/p1/j1-300.webp"} {
+		if !store.Has(k) {
+			t.Fatalf("%s not written", k)
+		}
+	}
+	// A retry after a lost response reports the variants too.
+	_, again, err := run(t, c, authed(), r)
+	if err != nil || len(again.GetVariants()) != 2 {
+		t.Fatalf("retry: %v %v", again.GetVariants(), err)
+	}
+
+	// Variants for an existing image: nothing is deleted or re-encoded.
+	_ = store.Put(context.Background(), "products/p1/old.webp", pngBytes(t, 500, 500), "image/webp")
+	only := &imagingv1.ProcessImageRequest{JobId: "b1", SourceKey: "products/p1/old.webp", OutputKey: "products/p1/old.webp",
+		MaxEdge: 2400, Quality: 80, VariantEdges: []uint32{400}, VariantsOnly: true}
+	_, res, err = run(t, c, authed(), only)
+	if err != nil || len(res.GetVariants()) != 1 || !store.Has("products/p1/old.webp") || !store.Has("products/p1/old-400.webp") {
+		t.Fatalf("variants only: %v %v", res.GetVariants(), err)
+	}
+	only.SourceKey = "uploads/x.png"
+	if _, _, err := run(t, c, authed(), only); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("variants_only with a different source: %v", err)
+	}
+}

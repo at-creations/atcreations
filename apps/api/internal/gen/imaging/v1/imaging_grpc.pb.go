@@ -36,6 +36,10 @@ type ImageWorkerServiceClient interface {
 	// the original. Calls are idempotent per `output_key`: if the original is already gone but
 	// the output exists (a retry after a lost response), the existing output is reported.
 	//
+	// Smaller variants (`variant_edges`) are written next to the output, at keys derived from it
+	// ("x.webp" → "x-800.webp"). With `variants_only`, the source is an existing image (equal to
+	// `output_key`): only its variants are written, and nothing is deleted.
+	//
 	// Errors (gRPC status codes):
 	//   INVALID_ARGUMENT     the file is not a supported image or exceeds the limits; the original
 	//                        has been deleted and the job must not be retried.
@@ -85,6 +89,10 @@ type ImageWorkerServiceServer interface {
 	// limits, downsizes it to `max_edge`, encodes WebP, writes it to `output_key` and then deletes
 	// the original. Calls are idempotent per `output_key`: if the original is already gone but
 	// the output exists (a retry after a lost response), the existing output is reported.
+	//
+	// Smaller variants (`variant_edges`) are written next to the output, at keys derived from it
+	// ("x.webp" → "x-800.webp"). With `variants_only`, the source is an existing image (equal to
+	// `output_key`): only its variants are written, and nothing is deleted.
 	//
 	// Errors (gRPC status codes):
 	//   INVALID_ARGUMENT     the file is not a supported image or exceeds the limits; the original

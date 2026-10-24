@@ -18,6 +18,15 @@ type Image struct {
 	Width  int            `bson:"w"`
 	Height int            `bson:"h"`
 	Alt    *LocalizedText `bson:"alt,omitempty"`
+	// Smaller copies for responsive loading, smallest first (see media.VariantEdges). Missing
+	// or null until produced; empty when the image is smaller than every variant size.
+	Variants []ImageVariant `bson:"variants"`
+}
+
+type ImageVariant struct {
+	Key    string `bson:"key"`
+	Width  int    `bson:"w"`
+	Height int    `bson:"h"`
 }
 
 const (
@@ -92,6 +101,14 @@ type ImageDTO struct {
 	Width  int            `json:"width"`
 	Height int            `json:"height"`
 	Alt    *LocalizedText `json:"alt,omitempty"`
+	// Smaller copies (smallest first) for srcset; the main URL is the largest.
+	Variants []ImageVariantDTO `json:"variants,omitempty"`
+}
+
+type ImageVariantDTO struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 }
 
 type CategoryRef struct {

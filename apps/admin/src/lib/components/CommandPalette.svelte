@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { Command, Dialog } from 'bits-ui';
 	import { goto } from '$app/navigation';
@@ -116,7 +117,7 @@
 					label: localized(p.name),
 					hint: p.finalPriceCents === null ? undefined : formatCAD(p.finalPriceCents),
 					thumb: true,
-					image: p.images[0]?.url,
+					image: imageUrl(p.images[0], 64),
 					status: { kind: 'product' as const, value: p.status },
 					href: resolve(`/products/${p.id}`)
 				}))
@@ -133,7 +134,7 @@
 						label: localized(c.name),
 						hint: m.cat_product_count({ count: c.productCount }),
 						thumb: true,
-						image: c.image?.url,
+						image: imageUrl(c.image, 64),
 						href: resolve(`/categories/${c.id}`)
 					}))
 			: []

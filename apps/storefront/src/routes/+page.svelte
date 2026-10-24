@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { srcset } from '$lib/images';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath, t } from '$lib/i18n';
@@ -53,6 +54,8 @@
 							{#if category.image}
 								<img
 									src={category.image.url}
+									srcset={srcset(category.image)}
+									sizes="(min-width: 768px) 256px, 50vw"
 									alt=""
 									width={category.image.width}
 									height={category.image.height}

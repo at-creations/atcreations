@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { imageUrl } from '$lib/utils/images';
 	import type { Product } from '@atcreations/api-types';
 	import { resolve } from '$app/paths';
 	import { localized } from '$lib/i18n';
@@ -20,7 +21,7 @@
 >
 	<div class="relative aspect-[4/3] overflow-hidden bg-zinc-100">
 		<Thumb
-			src={product.images[0]?.url}
+			src={imageUrl(product.images[0], 600)}
 			class="size-full transition-transform duration-300 group-hover:scale-[1.03]"
 			rounded=""
 			iconSize={28}

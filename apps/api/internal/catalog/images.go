@@ -136,3 +136,85 @@ func (s *Service) CategoryExists(ctx context.Context, id bson.ObjectID) (bool, e
 	n, err := s.categories.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
 	return n > 0, err
 }
+
+// ImageNeedingVariants is a stored image without smaller copies yet (saved before they existed).
+type ImageNeedingVariants struct {
+	OwnerKind string // "product" or "category"
+	OwnerID   bson.ObjectID
+	ImageID   string
+	Key       string
+}
+
+// ImagesWithoutVariants returns up to limit images that have no variants recorded, skipping
+// the image keys in skip (already attempted by the caller).
+func (s *Service) ImagesWithoutVariants(ctx context.Context, limit int, skip map[string]bool) ([]ImageNeedingVariants, error) {
+	var out []ImageNeedingVariants
+	cur, err := s.products.Find(ctx, bson.M{"images": bson.M{"$elemMatch": bson.M{"variants": nil}}},
+		options.Find().SetProjection(bson.M{"images": 1}))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	for cur.Next(ctx) && len(out) < limit {
+		var p struct {
+			ID     bson.ObjectID `bson:"_id"`
+			Images []Image       `bson:"images"`
+		}
+		if err := cur.Decode(&p); err != nil {
+			return nil, err
+		}
+		for _, img := range p.Images {
+			if img.Variants == nil && !skip[img.Key] && len(out) < limit {
+				out = append(out, ImageNeedingVariants{OwnerKind: "product", OwnerID: p.ID, ImageID: img.ID, Key: img.Key})
+			}
+		}
+	}
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) >= limit {
+		return out, nil
+	}
+	cats, err := s.categories.Find(ctx, bson.M{"image": bson.M{"$type": "object"}, "image.variants": nil},
+		options.Find().SetProjection(bson.M{"image": 1}))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cats.Close(ctx) }()
+	for cats.Next(ctx) && len(out) < limit {
+		var c struct {
+			ID    bson.ObjectID `bson:"_id"`
+			Image Image         `bson:"image"`
+		}
+		if err := cats.Decode(&c); err != nil {
+			return nil, err
+		}
+		if !skip[c.Image.Key] {
+			out = append(out, ImageNeedingVariants{OwnerKind: "category", OwnerID: c.ID, ImageID: c.Image.ID, Key: c.Image.Key})
+		}
+	}
+	return out, cats.Err()
+}
+
+// SetImageVariants records the variants of one stored image (matched by key, so an image
+// replaced meanwhile is left alone). An empty list marks an image too small for any variant.
+func (s *Service) SetImageVariants(ctx context.Context, img ImageNeedingVariants, variants []ImageVariant) error {
+	if variants == nil {
+		variants = []ImageVariant{}
+	}
+	var err error
+	switch img.OwnerKind {
+	case "product":
+		_, err = s.products.UpdateOne(ctx, bson.M{"_id": img.OwnerID, "images": bson.M{"$elemMatch": bson.M{"id": img.ImageID, "key": img.Key}}},
+			bson.M{"$set": bson.M{"images.$.variants": variants}})
+	case "category":
+		_, err = s.categories.UpdateOne(ctx, bson.M{"_id": img.OwnerID, "image.key": img.Key},
+			bson.M{"$set": bson.M{"image.variants": variants}})
+	default:
+		return fmt.Errorf("unknown owner kind %q", img.OwnerKind)
+	}
+	if err == nil {
+		s.cache.Invalidate(ctx, redisx.NSCatalog)
+	}
+	return err
+}

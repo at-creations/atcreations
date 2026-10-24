@@ -3,6 +3,7 @@ package uploads
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/atcreations/atcreations/apps/api/internal/catalog"
 	imagingv1 "github.com/atcreations/atcreations/apps/api/internal/gen/imaging/v1"
+	"github.com/atcreations/atcreations/apps/api/internal/media"
 	"github.com/atcreations/atcreations/apps/api/internal/platform/mongox"
 )
 
@@ -114,6 +116,7 @@ func (s *Service) callWorker(ctx context.Context, job *Job) (*imagingv1.Result, 
 	stream, err := s.worker.ProcessImage(ctx, &imagingv1.ProcessImageRequest{
 		JobId: job.ID.Hex(), SourceKey: job.SourceKey, OutputKey: job.OutputKey,
 		MaxEdge: uint32(s.opts.MaxEdge), Quality: uint32(s.opts.Quality), //nolint:gosec // small positive config values
+		VariantEdges: variantEdges(),
 	})
 	if err != nil {
 		return nil, err
@@ -145,7 +148,7 @@ func (s *Service) callWorker(ctx context.Context, job *Job) (*imagingv1.Result, 
 
 // complete attaches the processed image to its owner and finishes the job.
 func (s *Service) complete(ctx context.Context, log *slog.Logger, job *Job, res *imagingv1.Result) {
-	img := catalog.Image{ID: job.ID.Hex(), Key: res.GetOutputKey(), Width: int(res.GetWidth()), Height: int(res.GetHeight())}
+	img := catalog.Image{ID: job.ID.Hex(), Key: res.GetOutputKey(), Width: int(res.GetWidth()), Height: int(res.GetHeight()), Variants: imageVariants(res)}
 	var attachErr error
 	switch job.OwnerKind {
 	case KindProduct:
@@ -267,4 +270,96 @@ func backoff(attempt int) time.Duration {
 
 func jitter(d time.Duration) time.Duration {
 	return d/2 + time.Duration(rand.Int64N(int64(d/2)+1)) //nolint:gosec // jitter, not security
+}
+
+func variantEdges() []uint32 {
+	out := make([]uint32, len(media.VariantEdges))
+	for i, e := range media.VariantEdges {
+		out[i] = uint32(e) //nolint:gosec // small positive constants
+	}
+	return out
+}
+
+// imageVariants maps the worker's variants; never nil, so an image too small for any variant
+// is recorded as done (an empty list) rather than missing.
+func imageVariants(res *imagingv1.Result) []catalog.ImageVariant {
+	out := make([]catalog.ImageVariant, 0, len(res.GetVariants()))
+	for _, v := range res.GetVariants() {
+		out = append(out, catalog.ImageVariant{Key: v.GetKey(), Width: int(v.GetWidth()), Height: int(v.GetHeight())})
+	}
+	return out
+}
+
+// BackfillVariants adds smaller copies to images stored before variants existed. It runs once
+// in the background (see mongox.RunOnce): image by image through the worker, waiting while the
+// worker is busy. Images that cannot be read are marked done; any other failure stops the run,
+// which then continues on the next start.
+func (s *Service) BackfillVariants(ctx context.Context) error {
+	attempted := map[string]bool{}
+	done := 0
+	for {
+		batch, err := s.owners.ImagesWithoutVariants(ctx, 50, attempted)
+		if err != nil {
+			return err
+		}
+		if len(batch) == 0 {
+			if done > 0 {
+				slog.InfoContext(ctx, "image variants backfilled", "images", done)
+			}
+			return nil
+		}
+		for _, img := range batch {
+			attempted[img.Key] = true
+			res, err := s.variantsFor(ctx, img.Key)
+			switch status.Code(err) {
+			case codes.OK:
+			case codes.NotFound, codes.InvalidArgument:
+				slog.WarnContext(ctx, "image variants skipped", "key", img.Key, "err", err)
+				res = &imagingv1.Result{}
+			default:
+				return fmt.Errorf("variants for %s: %w", img.Key, err)
+			}
+			if err := s.owners.SetImageVariants(ctx, img, imageVariants(res)); err != nil {
+				return err
+			}
+			done++
+		}
+	}
+}
+
+// variantsFor asks the worker for an existing image's variants, waiting while it is busy and
+// retrying a few transient failures (e.g. the worker restarting).
+func (s *Service) variantsFor(ctx context.Context, key string) (*imagingv1.Result, error) {
+	transientLeft := 6
+	for {
+		stream, err := s.worker.ProcessImage(ctx, &imagingv1.ProcessImageRequest{
+			JobId: "variants", SourceKey: key, OutputKey: key, VariantsOnly: true,
+			MaxEdge: uint32(s.opts.MaxEdge), Quality: uint32(s.opts.Quality), //nolint:gosec // small positive config values
+			VariantEdges: variantEdges(),
+		})
+		var res *imagingv1.Result
+		for err == nil {
+			var ev *imagingv1.ProcessImageResponse
+			if ev, err = stream.Recv(); err == nil && ev.GetResult() != nil {
+				res = ev.GetResult()
+			}
+		}
+		if errors.Is(err, io.EOF) && res != nil {
+			return res, nil
+		}
+		switch status.Code(err) {
+		case codes.ResourceExhausted: // busy with uploads: they go first
+		case codes.Unavailable, codes.DeadlineExceeded:
+			if transientLeft--; transientLeft < 0 {
+				return nil, err
+			}
+		default:
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
 }

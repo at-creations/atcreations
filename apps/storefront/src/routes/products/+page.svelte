@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sized } from '$lib/images';
 	import { formatTotal } from '$lib/format';
 	import { m } from '$lib/paraglide/messages';
 	import { t } from '$lib/i18n';
@@ -42,7 +43,7 @@
 		>
 			{#if selected.image}
 				<img
-					src={selected.image.url}
+					src={sized(selected.image, 256)}
 					alt=""
 					width={selected.image.width}
 					height={selected.image.height}

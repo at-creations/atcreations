@@ -268,3 +268,47 @@ func TestSweepRemovesStaleOriginals(t *testing.T) {
 		t.Fatal("sweep must remove only originals without a live job")
 	}
 }
+
+func TestBackfillVariantsForStoredImages(t *testing.T) {
+	svc, cat, store, pid, product := setup(t, false)
+	svc.opts.MaxEdge = 2400 // production size: variants are below the stored image's edge
+	ctx := context.Background()
+	for _, img := range []struct {
+		id   string
+		w, h int
+	}{{"legacy", 1000, 500}, {"tiny", 100, 100}} {
+		key := "products/" + pid.Hex() + "/" + img.id + ".webp"
+		_ = store.Put(ctx, key, pngBytes(t, img.w, img.h), "image/webp")
+		if err := cat.AttachProductImage(ctx, "u", pid, catalog.Image{ID: img.id, Key: key, Width: img.w, Height: img.h}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.BackfillVariants(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]catalog.ImageVariant{}
+	for _, img := range product().Images {
+		got[img.ID] = img.Variants
+	}
+	if v := got["legacy"]; len(v) != 2 || v[0].Width != 400 || v[1].Width != 800 || !store.Has(v[1].Key) {
+		t.Fatalf("legacy variants = %+v", v)
+	}
+	if v := got["tiny"]; v == nil || len(v) != 0 {
+		t.Fatalf("tiny image must be marked done with no variants, got %#v", v)
+	}
+	if left, err := cat.ImagesWithoutVariants(ctx, 10, nil); err != nil || len(left) != 0 {
+		t.Fatalf("still without variants: %v %v", left, err)
+	}
+	// Deleting the image deletes its variants too (by derived key).
+	if _, err := cat.RemoveProductImage(ctx, "u", pid, "legacy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cat.SweepOrphanedMedia(ctx, -time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range media.WithVariants("products/" + pid.Hex() + "/legacy.webp") {
+		if store.Has(k) {
+			t.Fatalf("%s left after the image was removed", k)
+		}
+	}
+}

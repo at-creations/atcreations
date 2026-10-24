@@ -14,6 +14,10 @@ service ImageWorkerService {
   // the original. Calls are idempotent per `output_key`: if the original is already gone but
   // the output exists (a retry after a lost response), the existing output is reported.
   //
+  // Smaller variants (`variant_edges`) are written next to the output, at keys derived from it
+  // ("x.webp" → "x-800.webp"). With `variants_only`, the source is an existing image (equal to
+  // `output_key`): only its variants are written, and nothing is deleted.
+  //
   // Errors (gRPC status codes):
   //   INVALID_ARGUMENT     the file is not a supported image or exceeds the limits; the original
   //                        has been deleted and the job must not be retried.
@@ -37,6 +41,10 @@ message ProcessImageRequest {
   uint32 max_edge = 4;
   // WebP quality, 1-100.
   uint32 quality = 5;
+  // Longest edges of smaller copies to write; edges not below the image's own are skipped.
+  repeated uint32 variant_edges = 6;
+  // Add variants to an existing image instead of processing an upload.
+  bool variants_only = 7;
 }
 
 message ProcessImageResponse {
@@ -68,4 +76,13 @@ message Result {
   uint32 height = 3;
   uint64 size_bytes = 4;
   string content_type = 5;
+  repeated Variant variants = 6;
+}
+
+message Variant {
+  string key = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  // The requested longest edge.
+  uint32 edge = 4;
 }

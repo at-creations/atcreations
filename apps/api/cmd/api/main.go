@@ -181,6 +181,11 @@ func run() error {
 	if cfg.JobsEnabled {
 		jobs.NewScheduler(mongox.NewLeases(db, fmt.Sprintf("%s-%d", host, os.Getpid())),
 			jobs.Job{Name: "recent-views", Every: time.Hour, Timeout: 5 * time.Minute, Run: catalogSvc.RefreshRecentViews},
+			// Gives images stored before responsive copies existed their copies, through the worker
+			// behind uploads. Hourly until it has finished once (progress is kept per image).
+			jobs.Job{Name: "image-variants", Every: time.Hour, Timeout: 55 * time.Minute, Run: func(ctx context.Context) error {
+				return mongox.RunOnce(ctx, db, "image-variants-v1", uploadSvc.BackfillVariants)
+			}},
 			// Moves page/product view counts buffered in Redis to MongoDB.
 			jobs.Job{Name: "analytics-flush", Every: 30 * time.Second, Timeout: 25 * time.Second, Run: analyticsSvc.Flush, Quiet: true},
 			// Repairs drift in the stored category product counts (and backfills them on first run).
