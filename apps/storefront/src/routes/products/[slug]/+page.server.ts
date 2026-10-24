@@ -5,8 +5,8 @@ import { isSlug } from '$lib/urls';
 
 export const load: PageServerLoad = async ({ params, setHeaders }) => {
 	if (!isSlug(params.slug)) error(404, 'Not found');
+	// The public endpoint only returns published products (404 otherwise).
 	const product = await getProduct(params.slug);
-	if (product.status !== 'published') error(404, 'Not found');
 	setHeaders({ 'cache-control': CATALOGUE_CACHE_CONTROL });
 	return { product };
 };

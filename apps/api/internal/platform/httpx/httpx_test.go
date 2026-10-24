@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClientIPOnlyTrustsConfiguredProxies(t *testing.T) {
@@ -120,5 +121,26 @@ func TestPagesStopAtListDepth(t *testing.T) {
 	m := Page{Page: 1, Size: 50}.MetaCapped(MaxListDepth, true)
 	if !m.TotalCapped || m.TotalPages != MaxListDepth/50 {
 		t.Fatalf("meta = %+v", m)
+	}
+}
+
+func TestTimeoutAnswers503(t *testing.T) {
+	slow := Wrap(func(_ http.ResponseWriter, r *http.Request) error {
+		<-r.Context().Done() // a query that outlives the deadline
+		return r.Context().Err()
+	})
+	h := Timeout(20*time.Millisecond, func(r *http.Request) bool { return r.URL.Path == "/upload" })(slow)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil))
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("status = %d, want 503 with Retry-After", rec.Code)
+	}
+	// Skipped requests keep the caller's context (no deadline added).
+	var hasDeadline bool
+	Timeout(time.Millisecond, func(*http.Request) bool { return true })(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, hasDeadline = r.Context().Deadline()
+	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/upload", nil))
+	if hasDeadline {
+		t.Fatal("skipped request got a deadline")
 	}
 }

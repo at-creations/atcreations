@@ -346,7 +346,7 @@ func (s *Service) ListCategories(ctx context.Context) ([]CategoryDTO, error) {
 // categoryDocs returns every category in display order.
 func (s *Service) categoryDocs(ctx context.Context) ([]Category, error) {
 	cur, err := s.categories.Find(ctx, bson.M{}, options.Find().
-		SetSort(bson.D{{Key: "sortOrder", Value: 1}, {Key: "name.en", Value: 1}}).SetLimit(500))
+		SetSort(bson.D{{Key: "sortOrder", Value: 1}, {Key: "name.en", Value: 1}}).SetLimit(MaxCategories))
 	if err != nil {
 		return nil, err
 	}
@@ -722,6 +722,13 @@ func validateCategoryInput(in *CategoryInput) error {
 func (s *Service) CreateCategory(ctx context.Context, in *CategoryInput) (CategoryDTO, error) {
 	if err := validateCategoryInput(in); err != nil {
 		return CategoryDTO{}, err
+	}
+	// Lists and reorders always handle every category, so their number is bounded here
+	// instead of lists silently stopping. (Concurrent creates can overshoot by a few.)
+	if n, err := s.categories.CountDocuments(ctx, bson.M{}, options.Count().SetLimit(MaxCategories)); err != nil {
+		return CategoryDTO{}, err
+	} else if n >= MaxCategories {
+		return CategoryDTO{}, httpx.Conflict(fmt.Sprintf("a store can have at most %d categories", MaxCategories))
 	}
 	now := time.Now().UTC()
 	c := &Category{

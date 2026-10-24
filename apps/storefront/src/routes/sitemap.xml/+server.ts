@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import type { Product } from '@atcreations/api-types';
+import type { PublicProduct } from '@atcreations/api-types';
 import { listCategories, listProducts } from '$lib/server/api';
 import { config } from '$lib/server/env';
 import { LOCALES, localizedPath } from '$lib/i18n';
@@ -27,8 +27,8 @@ function escapeXml(value: string): string {
 		.replace(/'/g, '&apos;');
 }
 
-async function allProducts(): Promise<Product[]> {
-	const products: Product[] = [];
+async function allProducts(): Promise<PublicProduct[]> {
+	const products: PublicProduct[] = [];
 	for (let page = 1; page <= MAX_PAGES; page++) {
 		const { data, meta } = await listProducts({ page, pageSize: PAGE_SIZE, sort: 'newest' });
 		products.push(...data);

@@ -1,12 +1,12 @@
 <script lang="ts">
-	import type { Product } from '@atcreations/api-types';
+	import type { PublicProduct } from '@atcreations/api-types';
 	import { m } from '$lib/paraglide/messages';
 	import { formatMoney } from '$lib/format';
 	import { isDiscounted, savingsCents } from '$lib/product';
 	import type { Locale } from '$lib/i18n';
 
 	interface Props {
-		product: Pick<Product, 'priceCents' | 'finalPriceCents' | 'discountPercent'>;
+		product: Pick<PublicProduct, 'priceCents' | 'finalPriceCents' | 'discountPercent'>;
 		locale: Locale;
 		size?: 'sm' | 'lg';
 		showSavings?: boolean;

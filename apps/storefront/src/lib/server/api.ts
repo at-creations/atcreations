@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch';
 import { error } from '@sveltejs/kit';
-import type { Category, PageMeta, paths, Product, StoreInfo } from '@atcreations/api-types';
+import type { Category, PageMeta, paths, PublicProduct, StoreInfo } from '@atcreations/api-types';
 import { config } from './env';
 import { requestContext } from './request-context';
 
@@ -57,20 +57,34 @@ async function unwrap<T>(label: string, request: () => Promise<ApiResult<T>>): P
 
 export async function listProducts(
 	query: ProductQuery
-): Promise<{ data: Product[]; meta: PageMeta }> {
+): Promise<{ data: PublicProduct[]; meta: PageMeta }> {
 	return unwrap('GET /v1/products', () => api().GET('/v1/products', { params: { query } }));
 }
 
-export async function getProduct(slug: string): Promise<Product> {
+export async function getProduct(slug: string): Promise<PublicProduct> {
 	const body = await unwrap(`GET /v1/products/{slug}`, () =>
 		api().GET('/v1/products/{slug}', { params: { path: { slug } } })
 	);
 	return body.data;
 }
 
-export async function listCategories(): Promise<Category[]> {
-	const body = await unwrap('GET /v1/categories', () => api().GET('/v1/categories'));
-	return body.data;
+/** Categories change rarely and are the same for everyone: kept in memory for a minute. */
+const CATEGORIES_TTL_MS = 60_000;
+let categoriesCache: { at: number; value: Promise<Category[]> } | null = null;
+
+export function listCategories(): Promise<Category[]> {
+	const now = Date.now();
+	if (!categoriesCache || now - categoriesCache.at > CATEGORIES_TTL_MS) {
+		const value = unwrap('GET /v1/categories', () => api().GET('/v1/categories')).then(
+			(body) => body.data
+		);
+		categoriesCache = { at: now, value };
+		// A failure is not cached: the next request tries again.
+		value.catch(() => {
+			if (categoriesCache?.value === value) categoriesCache = null;
+		});
+	}
+	return categoriesCache.value;
 }
 
 export async function getStoreInfo(): Promise<StoreInfo> {
@@ -87,5 +101,6 @@ export async function orFallback<T>(fn: () => Promise<T>, fallback: T): Promise<
 	}
 }
 
-export const CATALOGUE_CACHE_CONTROL =
-	'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
+// Private: every HTML response carries its own CSP nonce, so a shared cache (CDN) must never
+// serve one visitor's page to another. The API's cache keeps rendering cheap instead.
+export const CATALOGUE_CACHE_CONTROL = 'private, max-age=60, stale-while-revalidate=600';

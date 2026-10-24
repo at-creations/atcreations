@@ -1,11 +1,11 @@
-import type { Product } from '@atcreations/api-types';
+import type { PublicProduct } from '@atcreations/api-types';
 
 const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-type PriceFields = Pick<Product, 'priceCents' | 'finalPriceCents' | 'discountPercent'>;
+type PriceFields = Pick<PublicProduct, 'priceCents' | 'finalPriceCents' | 'discountPercent'>;
 
 /** "New" badge: created less than 30 days ago. */
-export function isNewProduct(product: Pick<Product, 'createdAt'>, now = Date.now()): boolean {
+export function isNewProduct(product: Pick<PublicProduct, 'createdAt'>, now = Date.now()): boolean {
 	const created = Date.parse(product.createdAt);
 	return Number.isFinite(created) && now >= created && now - created < NEW_WINDOW_MS;
 }

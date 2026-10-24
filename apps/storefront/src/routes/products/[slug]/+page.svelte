@@ -21,7 +21,7 @@
 	const product = $derived(data.product);
 	const name = $derived(t(product.name, locale));
 	const description = $derived(t(product.description, locale));
-	const inStock = $derived(product.stock > 0);
+	const inStock = $derived(product.inStock);
 	const images = $derived(
 		product.images.map((image) => ({
 			url: image.url,
@@ -80,7 +80,7 @@
 	product={{
 		priceCents: product.finalPriceCents,
 		currency: product.currency,
-		inStock: product.stock > 0
+		inStock: product.inStock
 	}}
 />
 <JsonLd data={jsonLd} />

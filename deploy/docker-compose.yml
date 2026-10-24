@@ -132,7 +132,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-    mem_limit: 192m
+    mem_limit: 320m
     # No published ports: reachable only from the internal data network.
     networks: [data]
 

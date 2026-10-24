@@ -93,6 +93,10 @@ func New(d Deps) http.Handler {
 		httpx.Recover,
 		httpx.SecurityHeaders,
 		corsPolicies(d.Config.CORSPublicOrigins, d.Config.CORSAdminOrigins),
+		// Image uploads stream up to 25 MB on possibly slow links: the server timeouts bound them.
+		httpx.Timeout(30*time.Second, func(r *http.Request) bool {
+			return r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/uploads")
+		}),
 		// Per-IP ceiling for public routes. The admin API has its own, higher limit (staff
 		// browsing while uploading in bulk would otherwise hit this one first).
 		exceptAdmin(limit("global", 300, time.Minute)),

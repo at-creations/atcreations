@@ -24,7 +24,9 @@ import (
 // "other", so made-up paths or referrers cannot create unbounded rows.
 
 const (
-	bufferPrefix   = "analytics:buf:"      // hash per day: totals and "d|<dim>|<key>" counters
+	// Hash per day: totals and "d|<dim>|<key>" counters. No TTL, so Redis' volatile-lru eviction
+	// never drops counts; Flush deletes it.
+	bufferPrefix   = "analytics:buf:"
 	flushingPrefix = "analytics:flushing:" // a buffer being flushed
 	keysPrefix     = "analytics:keys:"     // set of known values per day and dimension
 	pendingKey     = "analytics:pending"   // days with buffered counts
@@ -66,7 +68,6 @@ for i = 5, #ARGV, 3 do
   end
   redis.call('HINCRBY', KEYS[1], 'd|' .. dim .. '|' .. key, 1)
 end
-redis.call('EXPIRE', KEYS[1], ARGV[3])
 redis.call('SADD', KEYS[3], ARGV[1])
 return 1
 `)

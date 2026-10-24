@@ -195,7 +195,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Product"][];
+                            data: components["schemas"]["PublicProduct"][];
                             meta: components["schemas"]["PageMeta"];
                         };
                     };
@@ -236,7 +236,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            data: components["schemas"]["Product"];
+                            data: components["schemas"]["PublicProduct"];
                         };
                     };
                 };
@@ -462,6 +462,7 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         delete?: never;
@@ -1099,6 +1100,7 @@ export interface paths {
                 };
                 404: components["responses"]["Problem"];
                 409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         post?: never;
@@ -1121,6 +1123,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["Problem"];
             };
         };
         options?: never;
@@ -1289,6 +1292,7 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
             };
         };
         options?: never;
@@ -1472,7 +1476,9 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
                 409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         delete?: never;
@@ -1520,6 +1526,8 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         post?: never;
@@ -1566,7 +1574,9 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
                 409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         post?: never;
@@ -1678,6 +1688,9 @@ export interface paths {
                         };
                     };
                 };
+                409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
+                502: components["responses"]["Problem"];
             };
         };
         delete?: never;
@@ -1714,6 +1727,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["Problem"];
+                502: components["responses"]["Problem"];
             };
         };
         options?: never;
@@ -1758,7 +1773,9 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
                 409: components["responses"]["Problem"];
+                422: components["responses"]["Problem"];
             };
         };
         post?: never;
@@ -1800,6 +1817,8 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
             };
         };
         delete?: never;
@@ -1839,6 +1858,7 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["Problem"];
             };
         };
         delete?: never;
@@ -1876,6 +1896,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
             };
         };
         options?: never;
@@ -2079,6 +2101,29 @@ export interface components {
             views: number;
             /** @description Increments on every field edit and stock change. Send it back on PUT for optimistic concurrency. */
             version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A published product as the storefront sees it (no exact stock, views or edit version). */
+        PublicProduct: {
+            id: components["schemas"]["ObjectID"];
+            slug: string;
+            name: components["schemas"]["LocalizedText"];
+            description: components["schemas"]["LocalizedText"];
+            /** @description null means "contact for price" */
+            priceCents: number | null;
+            finalPriceCents: number | null;
+            /** @enum {string} */
+            currency: "CAD";
+            discountPercent: number;
+            inStock: boolean;
+            featured: boolean;
+            categoryIds: components["schemas"]["ObjectID"][];
+            categories: components["schemas"]["CategoryRef"][];
+            /** @description Ordered; the first image is the cover. */
+            images: components["schemas"]["Image"][];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */

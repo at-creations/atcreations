@@ -121,6 +121,47 @@ type ProductDTO struct {
 	UpdatedAt       time.Time       `json:"updatedAt"`
 }
 
+// PublicProductDTO is what the storefront API returns: no status, exact stock, view count or
+// edit version (internal figures competitors or scrapers should not read).
+type PublicProductDTO struct {
+	ID              bson.ObjectID   `json:"id"`
+	Slug            string          `json:"slug"`
+	Name            LocalizedText   `json:"name"`
+	Description     LocalizedText   `json:"description"`
+	PriceCents      *int64          `json:"priceCents"`
+	FinalPriceCents *int64          `json:"finalPriceCents"`
+	Currency        string          `json:"currency"`
+	DiscountPercent int             `json:"discountPercent"`
+	InStock         bool            `json:"inStock"`
+	Featured        bool            `json:"featured"`
+	CategoryIDs     []bson.ObjectID `json:"categoryIds"`
+	Categories      []CategoryRef   `json:"categories"`
+	Images          []ImageDTO      `json:"images"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+}
+
+func (d ProductDTO) Public() PublicProductDTO {
+	return PublicProductDTO{
+		ID: d.ID, Slug: d.Slug, Name: d.Name, Description: d.Description,
+		PriceCents: d.PriceCents, FinalPriceCents: d.FinalPriceCents, Currency: d.Currency,
+		DiscountPercent: d.DiscountPercent, InStock: d.Stock > 0, Featured: d.Featured,
+		CategoryIDs: d.CategoryIDs, Categories: d.Categories, Images: d.Images,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+	}
+}
+
+func publicProducts(items []ProductDTO) []PublicProductDTO {
+	out := make([]PublicProductDTO, len(items))
+	for i, p := range items {
+		out[i] = p.Public()
+	}
+	return out
+}
+
+// MaxCategories bounds the categories of a store (every list returns them all).
+const MaxCategories = 500
+
 type CategoryDTO struct {
 	ID          bson.ObjectID `json:"id"`
 	Slug        string        `json:"slug"`

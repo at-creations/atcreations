@@ -3,6 +3,7 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -56,7 +57,14 @@ type problem struct {
 // WriteError renders err as application/problem+json.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var e *Error
-	if !errors.As(err, &e) {
+	switch {
+	case errors.As(err, &e):
+	case errors.Is(err, context.DeadlineExceeded) && r.Context().Err() != nil:
+		// The request's own deadline (see Timeout), not a failure of ours to report as a bug.
+		slog.WarnContext(r.Context(), "request timed out", "path", r.URL.Path, "method", r.Method)
+		w.Header().Set("Retry-After", "5")
+		e = NewError(http.StatusServiceUnavailable, "the request took too long; try again")
+	default:
 		slog.ErrorContext(r.Context(), "unhandled error", "err", err, "path", r.URL.Path, "method", r.Method)
 		e = NewError(http.StatusInternalServerError, "an unexpected error occurred")
 	}

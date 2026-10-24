@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Product } from '@atcreations/api-types';
+	import type { PublicProduct } from '@atcreations/api-types';
 	import ImageOff from '@lucide/svelte/icons/image-off';
 	import { t, type Locale } from '$lib/i18n';
 	import { productHref } from '$lib/urls';
@@ -7,7 +7,7 @@
 	import ProductBadges from './ProductBadges.svelte';
 
 	interface Props {
-		product: Product;
+		product: PublicProduct;
 		locale: Locale;
 		/** Load the image eagerly (for above-the-fold cards). */
 		eager?: boolean;

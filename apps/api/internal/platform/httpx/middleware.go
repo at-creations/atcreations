@@ -196,3 +196,20 @@ func PublicCache(maxAge time.Duration) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// Timeout gives each request a deadline, so a slow query fails the request (503) instead of
+// tying up the server until the write timeout. Requests for which skip returns true (long
+// uploads) are left to the server's own timeouts.
+func Timeout(d time.Duration, skip func(*http.Request) bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if skip != nil && skip(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), d)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}

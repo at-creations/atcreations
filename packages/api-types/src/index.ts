@@ -12,6 +12,7 @@ export type AdminCategory = Schemas['AdminCategory'];
 export type CategoryRef = Schemas['CategoryRef'];
 export type CategoryInput = Schemas['CategoryInput'];
 export type Product = Schemas['Product'];
+export type PublicProduct = Schemas['PublicProduct'];
 export type ProductInput = Schemas['ProductInput'];
 export type ProductStatus = Schemas['ProductStatus'];
 export type StoreInfo = Schemas['StoreInfo'];

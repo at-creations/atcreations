@@ -186,6 +186,27 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    PublicProduct:
+      type: object
+      description: A published product as the storefront sees it (no exact stock, views or edit version).
+      required: [id, slug, name, description, priceCents, finalPriceCents, currency, discountPercent, inStock, featured, categoryIds, categories, images, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/ObjectID' }
+        slug: { type: string }
+        name: { $ref: '#/components/schemas/LocalizedText' }
+        description: { $ref: '#/components/schemas/LocalizedText' }
+        priceCents: { type: [integer, 'null'], description: null means "contact for price" }
+        finalPriceCents: { type: [integer, 'null'] }
+        currency: { type: string, enum: [CAD] }
+        discountPercent: { type: integer, minimum: 0, maximum: 90 }
+        inStock: { type: boolean }
+        featured: { type: boolean }
+        categoryIds: { type: array, items: { $ref: '#/components/schemas/ObjectID' } }
+        categories: { type: array, items: { $ref: '#/components/schemas/CategoryRef' } }
+        images: { type: array, description: Ordered; the first image is the cover., items: { $ref: '#/components/schemas/Image' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
     ProductInput:
       type: object
       additionalProperties: false
@@ -567,7 +588,7 @@ paths:
                 type: object
                 required: [data, meta]
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+                  data: { type: array, items: { $ref: '#/components/schemas/PublicProduct' } }
                   meta: { $ref: '#/components/schemas/PageMeta' }
         '400': { $ref: '#/components/responses/Problem' }
   /v1/products/{slug}:
@@ -575,7 +596,7 @@ paths:
       tags: [public]
       parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Product' } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/PublicProduct' } } } } } }
         '404': { $ref: '#/components/responses/Problem' }
   /v1/products/{id}/views:
     post:
@@ -655,6 +676,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/OrderTracking' } } } } } }
         '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 
   /v1/admin/me:
     get:
@@ -868,12 +890,14 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
     delete:
       tags: [admin]
       security: [{ clerk: [] }]
       summary: Delete category and remove it from products
       responses:
         '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Problem' }
   /v1/admin/categories/{id}/uploads:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     post:
@@ -927,6 +951,7 @@ paths:
       security: [{ clerk: [] }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Category' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
 
   /v1/admin/store-info:
     put:
@@ -991,6 +1016,8 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /v1/admin/orders/{id}/notes:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     put:
@@ -1009,6 +1036,8 @@ paths:
                 staffNote: { type: string, maxLength: 5000 }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /v1/admin/orders/{id}/shipping:
     parameters: [{ $ref: '#/components/parameters/ID' }]
     put:
@@ -1019,6 +1048,8 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Order' } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 
   /v1/admin/staff:
     get:
@@ -1063,6 +1094,9 @@ paths:
                 role: { $ref: '#/components/schemas/Role' }
       responses:
         '201': { description: Created, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Invitation' } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '502': { $ref: '#/components/responses/Problem' }
   /v1/admin/staff/invitations/{invitationId}:
     delete:
       tags: [admin]
@@ -1070,6 +1104,8 @@ paths:
       parameters: [{ name: invitationId, in: path, required: true, schema: { type: string } }]
       responses:
         '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/Problem' }
+        '502': { $ref: '#/components/responses/Problem' }
   /v1/admin/staff/{userId}/role:
     put:
       tags: [admin]
@@ -1089,6 +1125,8 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /v1/admin/staff/{userId}/ban:
     post:
       tags: [admin]
@@ -1097,6 +1135,8 @@ paths:
       parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /v1/admin/staff/{userId}/unban:
     post:
       tags: [admin]
@@ -1104,6 +1144,7 @@ paths:
       parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/StaffMember' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /v1/admin/staff/{userId}:
     delete:
       tags: [admin]
@@ -1112,6 +1153,8 @@ paths:
       parameters: [{ name: userId, in: path, required: true, schema: { type: string } }]
       responses:
         '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /v1/admin/analytics:
     get:

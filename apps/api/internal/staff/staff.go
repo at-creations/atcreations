@@ -92,9 +92,18 @@ func clerkError(err error) error {
 	if !errors.As(err, &apiErr) {
 		return err
 	}
+	// Clerk's own wording is not passed through (it can change and mention internals): known
+	// codes get our message, the rest a generic one with the details in the log.
 	msg := "the identity provider rejected the request"
-	if len(apiErr.Errors) > 0 && apiErr.Errors[0].LongMessage != "" {
-		msg = apiErr.Errors[0].LongMessage
+	if len(apiErr.Errors) > 0 {
+		switch apiErr.Errors[0].Code {
+		case "form_identifier_exists", "duplicate_record":
+			msg = "this email already has an account or a pending invitation"
+		case "form_param_format_invalid", "form_param_value_invalid", "form_param_missing":
+			msg = "enter a valid email address"
+		default:
+			slog.Warn("clerk rejected a staff request", "status", apiErr.HTTPStatusCode, "code", apiErr.Errors[0].Code, "trace", apiErr.TraceID)
+		}
 	}
 	switch apiErr.HTTPStatusCode {
 	case http.StatusNotFound:

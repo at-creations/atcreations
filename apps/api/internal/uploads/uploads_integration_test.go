@@ -150,6 +150,15 @@ func TestUploadsProcessInParallel(t *testing.T) {
 		ids = append(ids, job.ID)
 	}
 	waitFor(t, "three images attached", func() bool { return len(product().Images) == 3 })
+	// Jobs are marked done and originals deleted right after the attach.
+	waitFor(t, "jobs finished", func() bool {
+		for _, id := range ids {
+			if jobStatus(t, svc, id).Status != StatusDone {
+				return false
+			}
+		}
+		return len(store.Keys(media.UploadsPrefix)) == 0
+	})
 	p := product()
 	if p.PendingImages != 0 {
 		t.Fatalf("pendingImages = %d, want 0", p.PendingImages)

@@ -55,7 +55,7 @@ func (s *Service) HandlePublicProducts(w http.ResponseWriter, r *http.Request) e
 	if slug != "" {
 		c, err := s.CategoryBySlug(r.Context(), slug)
 		if errors.Is(err, httpx.ErrNotFound) {
-			httpx.Paged(w, []ProductDTO{}, pq.Page.Meta(0))
+			httpx.Paged(w, []PublicProductDTO{}, pq.Page.Meta(0))
 			return nil
 		}
 		if err != nil {
@@ -67,7 +67,7 @@ func (s *Service) HandlePublicProducts(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	httpx.Paged(w, items, meta)
+	httpx.Paged(w, publicProducts(items), meta)
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (s *Service) HandlePublicProduct(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	httpx.JSON(w, http.StatusOK, dto)
+	httpx.JSON(w, http.StatusOK, dto.Public())
 	return nil
 }
 
