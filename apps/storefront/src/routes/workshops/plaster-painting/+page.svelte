@@ -1,8 +1,6 @@
 <script lang="ts">
 	import Brush from '@lucide/svelte/icons/brush';
 	import Clock from '@lucide/svelte/icons/clock';
-	import Gift from '@lucide/svelte/icons/gift';
-	import Heart from '@lucide/svelte/icons/heart';
 	import Users from '@lucide/svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath } from '$lib/i18n';
@@ -37,20 +35,7 @@
 		m.plaster_offering_space(),
 		m.plaster_offering_guidance()
 	]);
-	const benefits = $derived([
-		{ icon: Brush, title: m.plaster_benefit_relax_title(), text: m.plaster_benefit_relax_text() },
-		{
-			icon: Users,
-			title: m.plaster_benefit_connect_title(),
-			text: m.plaster_benefit_connect_text()
-		},
-		{ icon: Gift, title: m.plaster_benefit_create_title(), text: m.plaster_benefit_create_text() },
-		{
-			icon: Heart,
-			title: m.plaster_benefit_discover_title(),
-			text: m.plaster_benefit_discover_text()
-		}
-	]);
+	const steps = $derived([m.plaster_step1(), m.plaster_step2(), m.plaster_step3()]);
 </script>
 
 <Seo
@@ -105,18 +90,23 @@
 	</section>
 </div>
 
-<section class="bg-wall" aria-labelledby="benefits-title">
+<section class="bg-wall" aria-labelledby="steps-title">
 	<div class="container-page py-16 md:py-20">
-		<h2 id="benefits-title" class="heading-section">{m.plaster_benefits_heading()}</h2>
-		<ul class="mt-10 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-			{#each benefits as benefit (benefit.title)}
-				<li>
-					<benefit.icon class="size-6 text-teak" />
-					<h3 class="mt-3 text-lg font-semibold">{benefit.title}</h3>
-					<p class="mt-2 leading-relaxed">{benefit.text}</p>
+		<h2 id="steps-title" class="heading-section">{m.plaster_steps_title()}</h2>
+		<ol class="mt-8 grid gap-6 md:grid-cols-3">
+			{#each steps as step, i (step)}
+				<li class="flex gap-4">
+					<span
+						class="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink font-display text-lg font-bold text-white"
+						aria-hidden="true">{i + 1}</span
+					>
+					<p class="pt-1 text-lg text-ink">{step}</p>
 				</li>
 			{/each}
-		</ul>
-		<p class="mt-12 max-w-2xl text-lg font-medium text-ink">{m.plaster_closing()}</p>
+		</ol>
+		<p class="mt-10 max-w-2xl text-lg">
+			{m.plaster_groups()}
+			<a href={localizedPath(data.locale, '/contact')} class="link">{m.nav_contact()}</a>
+		</p>
 	</div>
 </section>

@@ -18,12 +18,7 @@
 		<div class="max-w-2xl space-y-5 text-lg leading-relaxed">
 			<p>{m.about_paragraph1()}</p>
 			<p>{m.about_paragraph2()}</p>
-			<p>{m.about_paragraph3()}</p>
 		</div>
-		<blockquote class="mt-8 max-w-xl font-display text-2xl leading-snug font-semibold text-ink">
-			{m.about_quote()}
-		</blockquote>
-		<p class="mt-3 text-ink-soft">{m.about_established()}</p>
 	</div>
 
 	<div class="mx-auto w-full max-w-md lg:col-span-5 lg:max-w-none">
