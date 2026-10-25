@@ -8,9 +8,11 @@
 	interface Props {
 		hours: BusinessHours[];
 		locale: Locale;
+		/** Two columns from the sm breakpoint (wide panels), or always one (narrow columns). */
+		columns?: 1 | 2;
 	}
 
-	let { hours, locale }: Props = $props();
+	let { hours, locale, columns = 2 }: Props = $props();
 
 	const DAY_NAMES: Record<DayKey, () => string> = {
 		mon: m.day_mon,
@@ -32,10 +34,10 @@
 {#if groups.length === 0}
 	<p>{m.contact_to_be_updated()}</p>
 {:else}
-	<dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+	<dl class={['grid grid-cols-1 gap-x-6 gap-y-3', columns === 2 && 'sm:grid-cols-2']}>
 		{#each groups as group (group.from)}
 			<div>
-				<dt class="font-medium text-gray-900">
+				<dt class="font-medium text-ink">
 					{dayRange(group.from, group.to)}
 				</dt>
 				<dd>

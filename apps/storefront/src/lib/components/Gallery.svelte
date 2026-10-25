@@ -47,7 +47,7 @@
 >
 	<div
 		class={[
-			'relative overflow-hidden rounded-xl bg-gray-100 shadow-card',
+			'relative overflow-hidden rounded-t-lg bg-wall',
 			aspect === 'square' ? 'aspect-square' : 'aspect-video'
 		]}
 	>
@@ -71,7 +71,7 @@
 					/>
 				{/key}
 				<span
-					class="absolute right-3 bottom-3 rounded-full bg-black/60 p-2 text-white opacity-80 group-hover:opacity-100"
+					class="absolute right-3 bottom-3 rounded-full bg-ink/70 p-2 text-white opacity-80 group-hover:opacity-100"
 					aria-hidden="true"
 				>
 					<Maximize class="size-5" />
@@ -81,7 +81,7 @@
 			{#if total > 1}
 				<button
 					type="button"
-					class="absolute top-1/2 left-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-gray-800 shadow-md hover:bg-white"
+					class="absolute top-1/2 left-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-ink shadow-md hover:bg-white"
 					onclick={() => go(-1)}
 					aria-label={m.gallery_prev()}
 				>
@@ -89,36 +89,37 @@
 				</button>
 				<button
 					type="button"
-					class="absolute top-1/2 right-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-gray-800 shadow-md hover:bg-white"
+					class="absolute top-1/2 right-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-ink shadow-md hover:bg-white"
 					onclick={() => go(1)}
 					aria-label={m.gallery_next()}
 				>
 					<ChevronRight class="size-5" />
 				</button>
 				<p
-					class="absolute top-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white"
+					class="absolute top-3 right-3 rounded-full bg-ink/70 px-2.5 py-1 text-xs font-medium text-white"
 					aria-live="polite"
 				>
 					{m.gallery_counter({ current: index + 1, total })}
 				</p>
 			{/if}
 		{:else}
-			<div class="flex size-full flex-col items-center justify-center gap-2 text-gray-500">
+			<div class="flex size-full flex-col items-center justify-center gap-2 text-ink-soft/80">
 				<ImageOff class="size-12" />
 				<p>{m.gallery_no_image()}</p>
 			</div>
 		{/if}
 	</div>
+	<div class="shelf [--shelf-gap:0px]" aria-hidden="true"></div>
 
 	{#if total > 1}
-		<ul class="flex gap-2 overflow-x-auto pb-1">
+		<ul class="flex gap-2 overflow-x-auto pt-2 pb-1">
 			{#each images as image, i (i)}
 				<li class="shrink-0">
 					<button
 						type="button"
 						class={[
 							'block size-16 overflow-hidden rounded-lg border-2 transition sm:size-20',
-							i === index ? 'border-blue-600' : 'border-transparent opacity-70 hover:opacity-100'
+							i === index ? 'border-ink' : 'border-transparent opacity-70 hover:opacity-100'
 						]}
 						aria-label={m.gallery_thumb({ current: i + 1, total })}
 						aria-current={i === index ? 'true' : undefined}

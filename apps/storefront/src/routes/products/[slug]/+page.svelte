@@ -2,6 +2,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import XCircle from '@lucide/svelte/icons/circle-x';
 	import Mail from '@lucide/svelte/icons/mail';
+	import MapPin from '@lucide/svelte/icons/map-pin';
 	import { untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath, t } from '$lib/i18n';
@@ -22,6 +23,7 @@
 	const name = $derived(t(product.name, locale));
 	const description = $derived(t(product.description, locale));
 	const inStock = $derived(product.inStock);
+	const address = $derived(data.storeInfo?.address?.trim() || '');
 	const images = $derived(
 		product.images.map((image) => ({
 			url: image.url,
@@ -86,7 +88,7 @@
 />
 <JsonLd data={jsonLd} />
 
-<div class="container-page pt-24 pb-20">
+<div class="container-page pt-24 pb-20 md:pt-28">
 	<Breadcrumbs
 		items={[
 			{ label: m.nav_home(), href: localizedPath(locale) },
@@ -95,65 +97,62 @@
 		]}
 	/>
 
-	<article class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-14">
-		{#key product.id}
-			<Gallery {images} label={name} />
-		{/key}
+	<article class="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-16">
+		<div class="lg:col-span-7">
+			{#key product.id}
+				<Gallery {images} label={name} />
+			{/key}
+		</div>
 
-		<div class="animate-fade-in">
-			<ProductBadges {product} class="mb-4" />
-			<h1 class="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">{name}</h1>
+		<div class="lg:col-span-5 lg:pt-2">
+			{#if product.categories.length > 0}
+				<ul class="flex flex-wrap gap-x-4 gap-y-1">
+					{#each product.categories as category (category.id)}
+						<li>
+							<a
+								href={productsHref(locale, { category: category.slug })}
+								class="text-ink-soft hover:text-ink hover:underline"
+							>
+								{t(category.name, locale)}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			<h1 class="mt-2 heading-page">{name}</h1>
+			<ProductBadges {product} class="mt-4" />
 
 			<div class="mt-6">
 				<Price {product} {locale} size="lg" showSavings />
 			</div>
 
-			<p class="mt-6 flex items-center gap-2 font-medium">
-				<span class="text-gray-600">{m.product_availability()}:</span>
+			<p class="mt-4 flex items-center gap-2 font-medium text-ink">
 				{#if inStock}
-					<span class="flex items-center gap-1 text-emerald-700">
-						<Check class="size-5" />{m.product_in_stock()}
-					</span>
+					<Check class="size-5 text-teak" />{m.product_in_stock()}
 				{:else}
-					<span class="flex items-center gap-1 text-gray-700">
-						<XCircle class="size-5" />{m.product_out_of_stock()}
-					</span>
+					<XCircle class="size-5 text-ink-soft" />{m.product_out_of_stock()}
 				{/if}
 			</p>
 
-			{#if product.categories.length > 0}
-				<div class="mt-6">
-					<h2 class="mb-2 text-sm font-semibold tracking-wide text-gray-600 uppercase">
-						{m.product_categories()}
-					</h2>
-					<ul class="flex flex-wrap gap-2">
-						{#each product.categories as category (category.id)}
-							<li>
-								<a
-									href={productsHref(locale, { category: category.slug })}
-									class="inline-block rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100"
-								>
-									{t(category.name, locale)}
-								</a>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-
 			{#if description}
-				<section class="mt-8 border-t border-gray-200 pt-6" aria-labelledby="description-title">
-					<h2 id="description-title" class="mb-3 text-xl font-semibold text-gray-900">
-						{m.product_description()}
-					</h2>
-					<p class="leading-relaxed whitespace-pre-line text-gray-700">{description}</p>
+				<section class="mt-8 border-t border-line pt-6" aria-labelledby="description-title">
+					<h2 id="description-title" class="sr-only">{m.product_description()}</h2>
+					<p class="max-w-prose leading-relaxed whitespace-pre-line">{description}</p>
 				</section>
 			{/if}
 
-			<a href={localizedPath(locale, '/contact')} class="mt-8 btn-primary">
-				<Mail class="size-5" />
-				{m.product_contact_cta()}
-			</a>
+			<div class="mt-8 rounded-lg bg-wall p-5">
+				{#if address}
+					<p class="flex items-start gap-2.5 text-ink">
+						<MapPin class="mt-0.5 size-5 shrink-0 text-teak" />
+						{m.product_visit_note({ address })}
+					</p>
+				{/if}
+				<a href={localizedPath(locale, '/contact')} class={['btn-primary', address && 'mt-4']}>
+					<Mail class="size-5" />
+					{m.product_contact_cta()}
+				</a>
+			</div>
 		</div>
 	</article>
 </div>

@@ -48,7 +48,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<header class="fixed inset-x-0 top-0 z-40 bg-white shadow-md shadow-blue-900/10">
+<header class="fixed inset-x-0 top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
 	<div class="container-page">
 		<div class="flex h-16 items-center justify-between gap-4">
 			<a href={localizedPath(locale)} class="flex shrink-0 items-center rounded">
@@ -69,10 +69,10 @@
 								href={localizedPath(locale, item.path)}
 								aria-current={isActive(item.path) ? 'page' : undefined}
 								class={[
-									'block border-b-2 px-3 py-2 font-medium whitespace-nowrap transition-colors',
+									'block border-b-2 px-3 py-2 font-medium whitespace-nowrap text-ink transition-colors',
 									isActive(item.path)
-										? 'border-blue-600 text-blue-700'
-										: 'border-transparent text-gray-700 hover:text-blue-700'
+										? 'border-marigold'
+										: 'border-transparent hover:border-wall-deep'
 								]}
 							>
 								{item.label}
@@ -86,8 +86,8 @@
 				<a
 					href={localizedPath(locale, '/search')}
 					class={[
-						'rounded-full p-2 transition-colors hover:bg-gray-100',
-						current.startsWith('/search') ? 'text-blue-700' : 'text-gray-700 hover:text-blue-700'
+						'rounded-full p-2 text-ink transition-colors hover:bg-wall',
+						current.startsWith('/search') && 'bg-wall'
 					]}
 					aria-label={m.nav_search()}
 					aria-current={current.startsWith('/search') ? 'page' : undefined}
@@ -98,7 +98,7 @@
 				<button
 					bind:this={menuButton}
 					type="button"
-					class="rounded-full p-2 text-gray-700 hover:bg-gray-100 hover:text-blue-700 lg:hidden"
+					class="rounded-full p-2 text-ink hover:bg-wall lg:hidden"
 					aria-expanded={menuOpen}
 					aria-controls={menuId}
 					aria-label={menuOpen ? m.menu_close() : m.menu_open()}
@@ -112,7 +112,7 @@
 		<nav
 			id={menuId}
 			aria-label={m.nav_main_label()}
-			class={['border-t border-gray-200 py-3 lg:hidden', !menuOpen && 'hidden']}
+			class={['border-t border-line py-3 lg:hidden', !menuOpen && 'hidden']}
 		>
 			<ul class="flex flex-col gap-1">
 				{#each navItems as item (item.path)}
@@ -121,10 +121,8 @@
 							href={localizedPath(locale, item.path)}
 							aria-current={isActive(item.path) ? 'page' : undefined}
 							class={[
-								'block rounded-md border-l-2 px-4 py-3 font-medium transition-colors',
-								isActive(item.path)
-									? 'border-blue-600 bg-gray-50 text-blue-700'
-									: 'border-transparent text-gray-700 hover:bg-gray-50 hover:text-blue-700'
+								'block rounded-md border-l-4 px-4 py-3 font-medium text-ink transition-colors',
+								isActive(item.path) ? 'border-marigold bg-mist' : 'border-transparent hover:bg-mist'
 							]}
 						>
 							{item.label}

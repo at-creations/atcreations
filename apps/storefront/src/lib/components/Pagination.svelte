@@ -16,8 +16,7 @@
 	const items = $derived(getPageItems(current, totalPages));
 	const base =
 		'flex size-10 items-center justify-center rounded-full text-sm font-medium transition-colors';
-	const idle =
-		'border border-gray-200 bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900';
+	const idle = 'border border-line bg-white text-ink-soft hover:bg-wall hover:text-ink';
 </script>
 
 {#if items.length > 0}
@@ -29,7 +28,7 @@
 						<ChevronLeft class="size-5" />
 					</a>
 				{:else}
-					<span class={[base, 'text-gray-300']} aria-hidden="true"
+					<span class={[base, 'text-ink-soft/40']} aria-hidden="true"
 						><ChevronLeft class="size-5" /></span
 					>
 				{/if}
@@ -41,7 +40,7 @@
 							href={href(item)}
 							class={[
 								base,
-								item === current ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700' : idle
+								item === current ? 'bg-marigold text-white shadow-md hover:bg-wall-deep' : idle
 							]}
 							aria-current={item === current ? 'page' : undefined}
 							aria-label={m.pagination_page({ page: item })}
@@ -49,7 +48,7 @@
 							{item}
 						</a>
 					{:else}
-						<span class="flex h-10 items-center px-1 text-gray-500" aria-hidden="true">…</span>
+						<span class="flex h-10 items-center px-1 text-ink-soft/80" aria-hidden="true">…</span>
 					{/if}
 				</li>
 			{/each}
@@ -59,7 +58,7 @@
 						<ChevronRight class="size-5" />
 					</a>
 				{:else}
-					<span class={[base, 'text-gray-300']} aria-hidden="true"
+					<span class={[base, 'text-ink-soft/40']} aria-hidden="true"
 						><ChevronRight class="size-5" /></span
 					>
 				{/if}

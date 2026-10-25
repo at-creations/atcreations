@@ -97,20 +97,14 @@
 <div class="container-page pt-28 pb-20">
 	<SectionTitle level={1} title={m.search_title()} />
 
-	<form
-		method="GET"
-		{action}
-		role="search"
-		class="mx-auto max-w-5xl card p-5 md:p-6"
-		onsubmit={onSubmit}
-	>
-		<label for="search-q" class="mb-1.5 block text-sm font-medium text-gray-800">
+	<form method="GET" {action} role="search" class="panel bg-mist p-5 md:p-6" onsubmit={onSubmit}>
+		<label for="search-q" class="mb-1.5 block text-sm font-medium text-ink">
 			{m.search_label()}
 		</label>
 		<div class="flex gap-2">
 			<div class="relative flex-1">
 				<SearchIcon
-					class="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-gray-500"
+					class="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-soft/80"
 				/>
 				<input
 					id="search-q"
@@ -130,7 +124,7 @@
 		<fieldset class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
 			<legend class="sr-only">{m.search_filters()}</legend>
 			<div>
-				<label for="search-category" class="mb-1.5 block text-sm font-medium text-gray-800">
+				<label for="search-category" class="mb-1.5 block text-sm font-medium text-ink">
 					{m.search_category()}
 				</label>
 				<select
@@ -147,7 +141,7 @@
 				</select>
 			</div>
 			<div>
-				<label for="search-sort" class="mb-1.5 block text-sm font-medium text-gray-800">
+				<label for="search-sort" class="mb-1.5 block text-sm font-medium text-ink">
 					{m.search_sort()}
 				</label>
 				<select
@@ -163,7 +157,7 @@
 				</select>
 			</div>
 			<div>
-				<label for="search-price" class="mb-1.5 block text-sm font-medium text-gray-800">
+				<label for="search-price" class="mb-1.5 block text-sm font-medium text-ink">
 					{m.search_price()}
 				</label>
 				<select
@@ -182,33 +176,30 @@
 
 		{#if hasFilters}
 			<p class="mt-4 text-right">
-				<a href={action} class="text-sm font-medium text-blue-700 hover:underline">
+				<a href={action} class="text-sm font-medium text-ink hover:underline">
 					{m.search_clear()}
 				</a>
 			</p>
 		{/if}
 	</form>
 
-	<p class="mt-10 mb-6 text-sm text-gray-600" aria-live="polite">
+	<p class="mt-10 mb-6 text-sm text-ink-soft" aria-live="polite">
 		{m.search_results({ shown: data.products.length, total: formatTotal(data.meta, locale) })}
 	</p>
 
 	{#if isLoading}
-		<ul
-			class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-			aria-busy="true"
-		>
+		<ul class="grid grid-cols-2 gap-x-6 gap-y-12 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true">
 			{#each { length: 8 }, i (i)}
 				<li><ProductCardSkeleton /></li>
 			{/each}
 		</ul>
 	{:else if data.products.length === 0}
-		<div class="card p-12 text-center">
-			<p class="text-lg font-medium text-gray-900">{m.search_no_results()}</p>
-			<p class="mt-2 text-gray-600">{m.search_try_adjusting()}</p>
+		<div class="panel p-12">
+			<p class="text-lg font-medium text-ink">{m.search_no_results()}</p>
+			<p class="mt-2 text-ink-soft">{m.search_try_adjusting()}</p>
 		</div>
 	{:else}
-		<ul class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+		<ul class="grid grid-cols-2 gap-x-6 gap-y-12 lg:grid-cols-3 xl:grid-cols-4">
 			{#each data.products as product (product.id)}
 				<li><ProductCard {product} {locale} /></li>
 			{/each}

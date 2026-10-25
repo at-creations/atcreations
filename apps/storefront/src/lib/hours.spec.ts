@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BusinessHours } from '@atcreations/api-types';
-import { groupBusinessHours } from './hours';
+import { groupBusinessHours, todaysHours } from './hours';
 
 const open = (day: BusinessHours['day'], o = '10:00', c = '18:00'): BusinessHours => ({
 	day,
@@ -45,5 +45,21 @@ describe('groupBusinessHours', () => {
 	it('treats missing times as closed and merges closed runs', () => {
 		const hours: BusinessHours[] = [{ day: 'sat', closed: false }, closed('sun')];
 		expect(groupBusinessHours(hours)).toEqual([{ from: 'sat', to: 'sun', closed: true }]);
+	});
+});
+
+describe('todaysHours', () => {
+	const hours = [
+		{ day: 'mon' as const, open: '11:00', close: '19:00', closed: false },
+		{ day: 'tue' as const, closed: true }
+	];
+	it("uses the shop's time zone", () => {
+		// 2026-10-27 03:00 UTC is still Monday evening in Vancouver.
+		expect(todaysHours(hours, new Date('2026-10-27T03:00:00Z'))).toEqual({
+			open: '11:00',
+			close: '19:00'
+		});
+		expect(todaysHours(hours, new Date('2026-10-27T20:00:00Z'))).toBe('closed');
+		expect(todaysHours(hours, new Date('2026-10-28T20:00:00Z'))).toBeNull();
 	});
 });

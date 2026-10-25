@@ -38,7 +38,7 @@
 
 	{#if selected}
 		<section
-			class="mx-auto mt-10 flex max-w-4xl flex-col items-center gap-6 card p-6 sm:flex-row"
+			class="mt-10 flex max-w-3xl flex-col gap-5 sm:flex-row sm:items-center"
 			aria-labelledby="category-title"
 		>
 			{#if selected.image}
@@ -47,29 +47,29 @@
 					alt=""
 					width={selected.image.width}
 					height={selected.image.height}
-					class="size-32 shrink-0 rounded-xl object-cover"
+					class="size-24 shrink-0 rounded-lg object-cover"
 				/>
 			{/if}
 			<div>
-				<h2 id="category-title" class="text-2xl font-semibold text-gray-900">{selectedName}</h2>
+				<h2 id="category-title" class="heading-section">{selectedName}</h2>
 				{#if selectedDescription}
-					<p class="mt-2 whitespace-pre-line text-gray-600">{selectedDescription}</p>
+					<p class="mt-2 whitespace-pre-line text-ink-soft">{selectedDescription}</p>
 				{/if}
 			</div>
 		</section>
 	{/if}
 
-	<p class="mt-10 mb-6 text-sm text-gray-600" aria-live="polite">
+	<p class="mt-10 mb-8 text-sm text-ink-soft" aria-live="polite">
 		{m.products_showing({ shown: data.products.length, total: formatTotal(data.meta, locale) })}
 	</p>
 
 	{#if data.products.length === 0}
-		<div class="card p-12 text-center">
-			<p class="text-lg font-medium text-gray-900">{m.products_no_products()}</p>
-			<p class="mt-2 text-gray-600">{m.products_try_other()}</p>
+		<div class="panel p-12">
+			<p class="text-lg font-medium text-ink">{m.products_no_products()}</p>
+			<p class="mt-2 text-ink-soft">{m.products_try_other()}</p>
 		</div>
 	{:else}
-		<ul class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+		<ul class="grid grid-cols-2 gap-x-6 gap-y-12 lg:grid-cols-3 xl:grid-cols-4">
 			{#each data.products as product, i (product.id)}
 				<li><ProductCard {product} {locale} eager={i < 4} /></li>
 			{/each}

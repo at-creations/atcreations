@@ -25,10 +25,10 @@
 	"home_explore": "Explore Our Collection",
 	"home_logo_alt": "AT Creations",
 
-	"featured_title": "Featured Products",
-	"featured_view_all": "View All Products",
+	"featured_title": "On the shelves now",
+	"featured_view_all": "See all products",
 
-	"categories_title": "Explore Our Categories",
+	"categories_title": "Shop by craft",
 	"categories_description": "Discover a wide range of handcrafted treasures, perfect for gifting, home decor, or simply adding a touch of unique artistry to your life.",
 
 	"about_title": "About Us",
@@ -39,7 +39,7 @@
 	"about_established": "Established in 2025",
 	"about_quote": "AT Creations: Find your calm, ignite your creativity.",
 	"about_image_alt": "AT Creations store in Vancouver",
-	"about_more": "More About Us",
+	"about_more": "Read our story",
 	"about_journey_title": "The AT Creations Journey",
 	"about_journey_text": "AT Creations is more than just a store; it's a journey of discovery and preservation of Vietnam's traditional craftsmanship. We've dedicated time to seeking out and partnering with talented artisans, individuals who have devoted their lives to pursuing their passion and preserving unique crafting techniques.",
 	"about_crafts_image_alt": "Wooden crafts and pottery on display",
@@ -83,7 +83,7 @@
 	"day_sat": "Saturday",
 	"day_sun": "Sunday",
 
-	"products_title": "Our Products",
+	"products_title": "Products",
 	"products_meta_description": "Browse handcrafted Vietnamese woodcrafts, pottery, paper crafts, souvenirs and gifts from AT Creations.",
 	"products_category_meta_title": "{category} – Products",
 	"products_categories": "Categories",
@@ -242,9 +242,9 @@
 	"terms_contact_content": "If you have any questions about these Terms, please contact us at:",
 
 	"footer_description": "AT Creations offers a curated collection of handcrafted treasures, perfect for gifting, home decor, or simply adding a touch of unique artistry to your life. Each piece is meticulously crafted by skilled artisans, reflecting the rich cultural heritage of our country.",
-	"footer_quick_links": "Quick Links",
+	"footer_quick_links": "Explore",
 	"footer_legal": "Legal",
-	"footer_contact": "Contact Us",
+	"footer_contact": "Visit us",
 	"footer_rights": "All rights reserved.",
 	"footer_logo_alt": "AT Creations logo",
 	"privacy_link": "Privacy Policy",
@@ -257,5 +257,21 @@
 	"error_message": "An error occurred while fetching data. Please try again later.",
 	"error_try_again": "Try Again",
 	"error_home": "Home",
-	"error_products": "Products"
+	"error_products": "Products",
+
+	"home_hero_title": "Vietnamese handicrafts on Main Street",
+	"home_hero_text": "Wooden ship models, crochet flowers, pottery and pop-up cards, made by hand by artisans in Vietnam. Come in to browse, or stay and paint your own figurine.",
+	"home_browse": "Browse the shop",
+	"home_workshop_link": "Paint a figurine",
+	"visit_open_today": "Open today, {hours}",
+	"visit_closed_today": "Closed today",
+	"home_workshop_title": "Paint your own plaster figurine",
+	"home_workshop_text": "Pick a figurine from our shelves and paint it at the workshop table. We provide the paints, brushes and a few tips, and you take your piece home.",
+	"home_workshop_cta": "About the workshop",
+	"home_story_title": "Made by hand, one piece at a time",
+	"home_story_text": "We partner with artisans in Vietnam who carve, crochet, shape and fold by hand, and bring their work to Vancouver. Because each piece is made individually, no two are quite the same.",
+	"footer_tagline": "Vietnamese handicrafts and a paint-your-own workshop on Main Street, Vancouver.",
+	"product_visit_note": "Available in our shop at {address}. Ask us to hold it for you, or about shipping.",
+
+	"plaster_book_cta": "Ask about a session"
 }

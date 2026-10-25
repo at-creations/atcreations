@@ -25,10 +25,10 @@
 	"home_explore": "Khám phá sản phẩm",
 	"home_logo_alt": "AT Creations",
 
-	"featured_title": "Sản phẩm nổi bật",
+	"featured_title": "Đang có tại cửa hàng",
 	"featured_view_all": "Xem tất cả sản phẩm",
 
-	"categories_title": "Khám Phá Danh Mục",
+	"categories_title": "Mua theo loại",
 	"categories_description": "Khám phá vô vàn những món đồ thủ công tinh xảo, lý tưởng để làm quà tặng, trang trí nhà cửa, hoặc mang đến nét nghệ thuật độc đáo cho cuộc sống của bạn.",
 
 	"about_title": "Về chúng tôi",
@@ -39,7 +39,7 @@
 	"about_established": "Thành lập năm 2025",
 	"about_quote": "AT Creations: Tìm lại sự tĩnh lặng, khơi nguồn cảm hứng.",
 	"about_image_alt": "Hình ảnh cửa hàng AT Creations tại Vancouver",
-	"about_more": "Xem thêm về chúng tôi",
+	"about_more": "Đọc câu chuyện của chúng tôi",
 	"about_journey_title": "Hành trình của AT Creations",
 	"about_journey_text": "AT Creations không chỉ là một cửa hàng, mà còn là một hành trình khám phá và gìn giữ những tinh hoa nghề thủ công truyền thống của Việt Nam. Chúng tôi đã dành thời gian tìm kiếm và hợp tác với những nghệ nhân tài hoa, những người đã dành cả cuộc đời để theo đuổi đam mê và gìn giữ những kỹ thuật chế tác độc đáo.",
 	"about_crafts_image_alt": "Sản phẩm đồ gỗ đồ gốm",
@@ -83,7 +83,7 @@
 	"day_sat": "Thứ Bảy",
 	"day_sun": "Chủ Nhật",
 
-	"products_title": "Sản phẩm của chúng tôi",
+	"products_title": "Sản phẩm",
 	"products_meta_description": "Khám phá đồ gỗ, gốm, đồ giấy thủ công, quà lưu niệm và quà tặng Việt Nam tại AT Creations.",
 	"products_category_meta_title": "{category} – Sản phẩm",
 	"products_categories": "Danh mục",
@@ -242,9 +242,9 @@
 	"terms_contact_content": "Nếu bạn có bất kỳ câu hỏi nào về các Điều khoản này, vui lòng liên hệ với chúng tôi tại:",
 
 	"footer_description": "AT Creations là cửa hàng chuyên bán các mặt hàng thủ công dùng làm quà tặng, đồ trang trí hay đồ lưu niệm trong gia đình với mong muốn mang lại cho khách hàng những sản phẩm giá trị nghệ thuật cao, được tạo ra từ những bàn tay nghệ nhân truyền thống.",
-	"footer_quick_links": "Đường dẫn",
+	"footer_quick_links": "Khám phá",
 	"footer_legal": "Pháp lý",
-	"footer_contact": "Liên hệ",
+	"footer_contact": "Ghé thăm",
 	"footer_rights": "Tất cả quyền được bảo lưu.",
 	"footer_logo_alt": "Logo AT Creations",
 	"privacy_link": "Chính sách bảo mật",
@@ -257,5 +257,21 @@
 	"error_message": "Đã xảy ra lỗi trong quá trình tải dữ liệu. Vui lòng thử lại sau.",
 	"error_try_again": "Thử lại",
 	"error_home": "Trang chủ",
-	"error_products": "Sản phẩm"
+	"error_products": "Sản phẩm",
+
+	"home_hero_title": "Đồ thủ công Việt Nam trên phố Main",
+	"home_hero_text": "Mô hình thuyền gỗ, hoa len móc, đồ gốm và thiệp nổi do nghệ nhân Việt Nam làm thủ công. Ghé xem, hoặc ở lại tự tay tô một bức tượng.",
+	"home_browse": "Xem sản phẩm",
+	"home_workshop_link": "Tô tượng thạch cao",
+	"visit_open_today": "Hôm nay mở cửa {hours}",
+	"visit_closed_today": "Hôm nay đóng cửa",
+	"home_workshop_title": "Tự tay tô tượng thạch cao",
+	"home_workshop_text": "Chọn một bức tượng trên kệ và tô màu tại bàn workshop. Chúng tôi chuẩn bị màu, cọ và hướng dẫn, bạn mang tác phẩm về nhà.",
+	"home_workshop_cta": "Tìm hiểu workshop",
+	"home_story_title": "Làm bằng tay, từng món một",
+	"home_story_text": "Chúng tôi hợp tác với các nghệ nhân ở Việt Nam, những người chạm khắc, móc len, nặn gốm và gấp giấy bằng tay, rồi mang tác phẩm của họ đến Vancouver. Vì mỗi món được làm riêng, không món nào giống hệt món nào.",
+	"footer_tagline": "Đồ thủ công Việt Nam và workshop tô tượng trên phố Main, Vancouver.",
+	"product_visit_note": "Có tại cửa hàng ở {address}. Liên hệ để chúng tôi giữ hàng cho bạn hoặc hỏi về giao hàng.",
+
+	"plaster_book_cta": "Hỏi lịch workshop"
 }

@@ -39,57 +39,56 @@
 
 <Seo title={m.about_title()} description={m.about_meta_description()} type="article" />
 
-<div class="container-page max-w-6xl animate-fade-in pt-28 pb-20">
+<div class="container-page pt-28 pb-20 md:pt-32">
 	<AboutIntro assetBaseUrl={data.config.assetBaseUrl}>
 		{#snippet heading()}
-			<h1 class="mb-6 text-3xl font-semibold text-gray-900 lg:text-4xl">{m.about_title()}</h1>
+			<h1 class="mb-8 heading-page">{m.about_title()}</h1>
 		{/snippet}
 	</AboutIntro>
 
-	<div class="mt-20 grid grid-cols-1 gap-10 lg:grid-cols-2">
+	<div class="mt-24 grid grid-cols-1 gap-16 lg:grid-cols-2">
 		{#each stories as story (story.title)}
-			<section class="flex flex-col card p-8 hover:shadow-card-hover">
-				<h2 class="mb-4 flex items-center text-xl font-semibold text-gray-900">
-					<span class="mr-3 h-8 w-2 rounded-full bg-blue-500" aria-hidden="true"></span>
-					{story.title}
-				</h2>
-				<p class="mb-6 leading-relaxed">{story.text}</p>
-				<div class="mt-auto overflow-hidden rounded-lg">
-					<img
-						src={story.image}
-						alt={story.alt}
-						width="600"
-						height="400"
-						loading="lazy"
-						class="h-auto w-full object-cover transition-transform duration-500 hover:scale-105"
-					/>
-				</div>
+			<section>
+				<img
+					src={story.image}
+					alt={story.alt}
+					width="1200"
+					height="800"
+					loading="lazy"
+					class="aspect-[3/2] w-full rounded-lg object-cover"
+				/>
+				<h2 class="mt-6 heading-section">{story.title}</h2>
+				<p class="mt-3 max-w-xl leading-relaxed">{story.text}</p>
 			</section>
 		{/each}
 	</div>
+</div>
 
-	<section class="mt-16 rounded-2xl bg-linear-to-r from-blue-50 to-indigo-50 p-8 shadow-card">
-		<h2 class="mb-6 text-center text-xl font-semibold text-gray-900">{m.about_values_title()}</h2>
-		<ul class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+<section class="bg-wall" aria-labelledby="values-title">
+	<div class="container-page py-16 md:py-20">
+		<h2 id="values-title" class="heading-section">{m.about_values_title()}</h2>
+		<dl class="mt-10 grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
 			{#each values as value (value.title)}
-				<li class="rounded-xl bg-white p-5 shadow-sm transition hover:shadow-md">
-					<h3 class="mb-2 font-semibold text-blue-700">{value.title}</h3>
-					<p class="text-sm">{value.text}</p>
-				</li>
+				<div>
+					<dt class="font-display text-lg font-semibold text-ink">{value.title}</dt>
+					<dd class="mt-2 leading-relaxed">{value.text}</dd>
+				</div>
 			{/each}
-		</ul>
-	</section>
+		</dl>
+	</div>
+</section>
 
-	<section class="mt-16">
-		<h2 class="mb-6 text-center text-xl font-semibold text-gray-900">{m.about_visit_title()}</h2>
-		<ul class="mx-auto max-w-4xl space-y-4">
+<section class="container-page py-16 md:py-20" aria-labelledby="visit-title">
+	<div class="max-w-3xl">
+		<h2 id="visit-title" class="heading-section">{m.about_visit_title()}</h2>
+		<ul class="mt-6 space-y-3 text-lg leading-relaxed">
 			{#each visitPoints as point (point)}
-				<li class="flex items-start gap-2">
-					<span class="text-blue-600" aria-hidden="true">•</span>
+				<li class="flex gap-3">
+					<span class="mt-3 size-1.5 shrink-0 rounded-full bg-teak" aria-hidden="true"></span>
 					<span>{point}</span>
 				</li>
 			{/each}
 		</ul>
-		<p class="mx-auto mt-8 max-w-4xl italic">{m.about_closing()}</p>
-	</section>
-</div>
+		<p class="mt-8 text-lg">{m.about_closing()}</p>
+	</div>
+</section>

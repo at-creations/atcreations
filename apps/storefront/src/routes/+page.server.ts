@@ -8,7 +8,7 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 	const [featured, categories] = await Promise.all([
 		orFallback(
 			async () =>
-				(await listProducts({ featured: true, pageSize: 6, sort: 'newest', locale })).data,
+				(await listProducts({ featured: true, pageSize: 8, sort: 'newest', locale })).data,
 			[]
 		),
 		orFallback(listCategories, [])

@@ -24,15 +24,15 @@
 			alt={m.footer_logo_alt()}
 			width="96"
 			height="96"
-			class="mb-8 size-24 rounded-2xl shadow-card"
+			class="mb-8 size-20 rounded-2xl"
 		/>
 	{/if}
-	<h1 class="text-3xl font-bold text-gray-900 md:text-4xl">
+	<h1 class="heading-page">
 		{notFound ? m.error_404_title() : m.error_title()}
 	</h1>
 	{#if notFound}
 		<p class="mt-4 text-lg">{m.error_404_message1()}</p>
-		<p class="mt-2 text-gray-600">{m.error_404_message2()}</p>
+		<p class="mt-2 text-ink-soft">{m.error_404_message2()}</p>
 	{:else}
 		<p class="mt-4 max-w-xl text-lg">{m.error_message()}</p>
 	{/if}

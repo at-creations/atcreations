@@ -20,6 +20,5 @@ export function sized(img: ResponsiveImage, minWidth: number): string {
 	return (img.variants ?? []).find((v) => v.width >= minWidth)?.url ?? img.url;
 }
 
-/** `sizes` for the product grids (1 / 2 / 3 / 4 columns). */
-export const GRID_SIZES =
-	'(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw';
+/** `sizes` for the product grids (2 / 3 / 4 columns). */
+export const GRID_SIZES = '(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, 50vw';

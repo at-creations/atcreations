@@ -45,3 +45,29 @@ export function groupBusinessHours(hours: readonly BusinessHours[]): HoursGroup[
 	}
 	return groups;
 }
+
+const WEEKDAY_KEYS: Record<string, DayKey> = {
+	Mon: 'mon',
+	Tue: 'tue',
+	Wed: 'wed',
+	Thu: 'thu',
+	Fri: 'fri',
+	Sat: 'sat',
+	Sun: 'sun'
+};
+
+/**
+ * Today's hours in the shop's time zone: `{ open, close }`, `'closed'`, or `null` when the
+ * hours for today are not published.
+ */
+export function todaysHours(
+	hours: readonly BusinessHours[],
+	now: Date = new Date(),
+	timeZone = 'America/Vancouver'
+): { open: string; close: string } | 'closed' | null {
+	const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone }).format(now);
+	const today = hours.find((h) => h.day === WEEKDAY_KEYS[weekday]);
+	if (!today) return null;
+	if (today.closed || !today.open || !today.close) return 'closed';
+	return { open: today.open, close: today.close };
+}

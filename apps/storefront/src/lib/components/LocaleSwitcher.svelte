@@ -45,7 +45,7 @@
 <div class="relative" bind:this={root} onkeydown={onKeydown}>
 	<button
 		type="button"
-		class="flex items-center gap-1.5 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-blue-700"
+		class="flex items-center gap-1.5 rounded-full px-2 py-1.5 text-sm font-medium text-ink-soft hover:bg-wall hover:text-ink"
 		aria-expanded={open}
 		aria-controls={menuId}
 		aria-label={m.language_current({ language: LABELS[locale]() })}
@@ -65,7 +65,7 @@
 	<ul
 		id={menuId}
 		class={[
-			'absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-card-hover',
+			'absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-lg',
 			!open && 'hidden'
 		]}
 	>
@@ -77,7 +77,7 @@
 					lang={target}
 					data-sveltekit-reload
 					aria-current={target === locale ? 'true' : undefined}
-					class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-700"
+					class="flex items-center gap-2 px-3 py-2 text-sm text-ink-soft hover:bg-mist hover:text-ink"
 					onclick={() => remember(target)}
 				>
 					<img
@@ -88,7 +88,7 @@
 						class="size-5 rounded-full object-cover"
 					/>
 					<span class="flex-1">{LABELS[target]()}</span>
-					{#if target === locale}<Check class="size-4 text-blue-700" />{/if}
+					{#if target === locale}<Check class="size-4 text-ink" />{/if}
 				</a>
 			</li>
 		{/each}

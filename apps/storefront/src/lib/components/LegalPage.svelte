@@ -24,11 +24,11 @@
 	const address = $derived(storeInfo?.address?.trim() || '');
 </script>
 
-<div class="container-page animate-fade-in pt-28 pb-20">
+<div class="container-page pt-28 pb-20 md:pt-32">
 	<SectionTitle level={1} {title} />
 
-	<div class="prose-legal mx-auto max-w-4xl card p-6 md:p-8 lg:p-10">
-		<p class="text-gray-600">
+	<div class="prose-legal max-w-3xl">
+		<p class="text-ink-soft">
 			{m.legal_last_updated()}: {m.legal_last_updated_date()}
 		</p>
 
@@ -51,7 +51,7 @@
 				{#if email}
 					<li>
 						{m.contact_email()}:
-						<a href={`mailto:${email}`} class="text-blue-700 hover:underline">{email}</a>
+						<a href={`mailto:${email}`} class="link">{email}</a>
 					</li>
 				{/if}
 				{#if phone}<li>{m.contact_phone()}: {phone}</li>{/if}

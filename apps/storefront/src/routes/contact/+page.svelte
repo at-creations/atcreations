@@ -10,7 +10,7 @@
 
 <Seo title={m.contact_title()} description={m.contact_meta_description()} />
 
-<div class="container-page animate-slide-up pt-28 pb-20">
+<div class="container-page pt-28 pb-20 md:pt-32">
 	<SectionTitle level={1} title={m.contact_title()} />
 	<ContactDetails storeInfo={data.storeInfo} locale={data.locale} headingLevel={2} />
 </div>

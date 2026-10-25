@@ -20,7 +20,8 @@
 	},
 	"dependencies": {
 		"@atcreations/api-types": "workspace:*",
-		"@fontsource-variable/inter": "5.3.0",
+		"@fontsource-variable/bricolage-grotesque": "5.3.0",
+		"@fontsource/be-vietnam-pro": "5.3.0",
 		"openapi-fetch": "0.17.0"
 	},
 	"devDependencies": {

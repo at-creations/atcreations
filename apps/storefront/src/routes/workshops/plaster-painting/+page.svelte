@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Brush from '@lucide/svelte/icons/brush';
+	import Clock from '@lucide/svelte/icons/clock';
 	import Gift from '@lucide/svelte/icons/gift';
 	import Heart from '@lucide/svelte/icons/heart';
 	import Users from '@lucide/svelte/icons/users';
@@ -52,7 +53,7 @@
 	type="article"
 />
 
-<div class="container-page max-w-6xl animate-fade-in pt-24 pb-20">
+<div class="container-page pt-24 pb-20 md:pt-28">
 	<Breadcrumbs
 		items={[
 			{ label: m.nav_home(), href: localizedPath(data.locale) },
@@ -63,52 +64,52 @@
 
 	<SectionTitle level={1} title={m.plaster_title()} />
 
-	<div class="mx-auto max-w-4xl">
-		<Gallery {images} label={m.plaster_title()} aspect="video" />
+	<div class="grid gap-10 lg:grid-cols-12 lg:gap-14">
+		<div class="lg:col-span-7">
+			<Gallery {images} label={m.plaster_title()} aspect="video" />
+		</div>
+		<div class="lg:col-span-5">
+			<h2 class="heading-section">{m.plaster_welcome_heading()}</h2>
+			<p class="mt-4 text-lg leading-relaxed">{m.plaster_welcome_message()}</p>
+			<ul class="mt-6 flex flex-wrap gap-x-8 gap-y-3 font-medium text-ink">
+				<li class="flex items-center gap-2">
+					<Clock class="size-5 text-teak" />{m.workshops_duration()}
+				</li>
+				<li class="flex items-center gap-2">
+					<Users class="size-5 text-teak" />{m.workshops_capacity()}
+				</li>
+			</ul>
+			<a href={localizedPath(data.locale, '/contact')} class="mt-8 btn-primary"
+				>{m.plaster_book_cta()}</a
+			>
+		</div>
 	</div>
 
-	<section class="mt-12 text-center">
-		<h2 class="text-2xl font-semibold text-gray-900">{m.plaster_welcome_heading()}</h2>
-		<p class="mx-auto mt-4 max-w-3xl text-lg leading-relaxed">{m.plaster_welcome_message()}</p>
-	</section>
-
-	<section class="mt-16 card p-6">
-		<h2 class="mb-6 flex items-center text-xl font-semibold text-gray-900">
-			<span class="mr-3 rounded-md bg-blue-100 p-2 text-blue-700"><Brush class="size-5" /></span>
-			{m.plaster_provide_heading()}
-		</h2>
-		<ul class="space-y-4 pl-4">
+	<section class="mt-20 grid gap-10 md:grid-cols-12" aria-labelledby="provide-title">
+		<h2 id="provide-title" class="heading-section md:col-span-4">{m.plaster_provide_heading()}</h2>
+		<ul class="space-y-3 text-lg md:col-span-8">
 			{#each offerings as offering (offering)}
-				<li class="flex items-start gap-2">
-					<span class="text-xl leading-none font-bold text-blue-600" aria-hidden="true">•</span>
+				<li class="flex gap-3">
+					<Brush class="mt-1 size-5 shrink-0 text-teak" />
 					<span>{offering}</span>
 				</li>
 			{/each}
 		</ul>
 	</section>
+</div>
 
-	<section class="mt-16">
-		<h2 class="mb-8 text-center text-xl font-semibold text-gray-900">
-			{m.plaster_benefits_heading()}
-		</h2>
-		<ul class="grid grid-cols-1 gap-6 md:grid-cols-2">
+<section class="bg-wall" aria-labelledby="benefits-title">
+	<div class="container-page py-16 md:py-20">
+		<h2 id="benefits-title" class="heading-section">{m.plaster_benefits_heading()}</h2>
+		<ul class="mt-10 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
 			{#each benefits as benefit (benefit.title)}
-				<li class="card p-6">
-					<div class="mb-3 flex items-center gap-4">
-						<div class="rounded-full bg-blue-50 p-3 text-blue-600">
-							<benefit.icon class="size-6" />
-						</div>
-						<h3 class="text-lg font-medium text-gray-900">{benefit.title}</h3>
-					</div>
-					<p class="sm:pl-16">{benefit.text}</p>
+				<li>
+					<benefit.icon class="size-6 text-teak" />
+					<h3 class="mt-3 text-lg font-semibold">{benefit.title}</h3>
+					<p class="mt-2 leading-relaxed">{benefit.text}</p>
 				</li>
 			{/each}
 		</ul>
-	</section>
-
-	<p
-		class="mt-16 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 p-8 text-center text-lg font-medium text-gray-800"
-	>
-		{m.plaster_closing()}
-	</p>
-</div>
+		<p class="mt-12 max-w-2xl text-lg font-medium text-ink">{m.plaster_closing()}</p>
+	</div>
+</section>

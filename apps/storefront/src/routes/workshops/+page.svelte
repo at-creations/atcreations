@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Users from '@lucide/svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
@@ -26,42 +25,35 @@
 
 <Seo title={m.workshops_meta_title()} description={m.workshops_meta_description()} />
 
-<div class="container-page max-w-6xl pt-28 pb-20">
+<div class="container-page pt-28 pb-20 md:pt-32">
 	<SectionTitle level={1} title={m.workshops_title()} />
-	<p class="mx-auto mb-12 max-w-3xl text-center text-lg">{m.workshops_intro()}</p>
+	<p class="mb-14 max-w-2xl text-lg leading-relaxed">{m.workshops_intro()}</p>
 
-	<ul class="space-y-6">
+	<ul class="space-y-16">
 		{#each workshops as workshop (workshop.id)}
-			<li
-				class="relative flex animate-fade-in flex-col overflow-hidden card hover:shadow-card-hover md:flex-row"
-			>
-				<div class="relative aspect-video shrink-0 md:aspect-auto md:w-2/5 xl:w-1/3">
+			<li class="group relative grid items-center gap-8 md:grid-cols-12 md:gap-12">
+				<div class="md:col-span-6">
 					<img
 						src={workshop.image}
 						alt=""
 						loading="lazy"
-						class="absolute inset-0 size-full object-cover"
+						class="aspect-[4/3] w-full rounded-t-lg object-cover"
 					/>
+					<div class="shelf [--shelf-gap:2rem]" aria-hidden="true"></div>
 				</div>
-				<div class="flex flex-1 flex-col justify-between p-6 md:p-8">
-					<div>
-						<h2 class="mb-3 text-xl font-semibold text-gray-900 md:text-2xl">{workshop.title}</h2>
-						<p class="mb-6 max-w-prose text-gray-600">{workshop.summary}</p>
-						<ul class="mb-6 grid grid-cols-1 gap-4 text-sm text-gray-600 sm:grid-cols-2">
-							<li class="flex items-center gap-2">
-								<Clock class="size-4 text-blue-600" />{workshop.duration}
-							</li>
-							<li class="flex items-center gap-2">
-								<Users class="size-4 text-blue-600" />{workshop.capacity}
-							</li>
-						</ul>
-					</div>
-					<a
-						href={workshop.href}
-						class="inline-flex items-center font-medium text-blue-700 after:absolute after:inset-0 hover:underline"
-					>
+				<div class="md:col-span-6">
+					<h2 class="heading-section md:text-4xl">{workshop.title}</h2>
+					<p class="mt-4 max-w-prose text-lg leading-relaxed">{workshop.summary}</p>
+					<ul class="mt-6 flex flex-wrap gap-x-8 gap-y-3 font-medium text-ink">
+						<li class="flex items-center gap-2">
+							<Clock class="size-5 text-teak" />{workshop.duration}
+						</li>
+						<li class="flex items-center gap-2">
+							<Users class="size-5 text-teak" />{workshop.capacity}
+						</li>
+					</ul>
+					<a href={workshop.href} class="mt-8 btn-primary after:absolute after:inset-0">
 						{m.workshops_learn_more()}<span class="sr-only">: {workshop.title}</span>
-						<ChevronRight class="ml-1 size-4" />
 					</a>
 				</div>
 			</li>

@@ -6,4 +6,4 @@
 	let { class: className = '' }: Props = $props();
 </script>
 
-<div class={['animate-pulse rounded-md bg-gray-200 motion-reduce:animate-none', className]}></div>
+<div class={['animate-pulse rounded-md bg-wall motion-reduce:animate-none', className]}></div>

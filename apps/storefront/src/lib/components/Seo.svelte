@@ -91,7 +91,7 @@
 		<meta property="og:locale:alternate" content={ogLocale(l)} />
 	{/each}
 
-	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:panel" content="summary_large_image" />
 	<meta name="twitter:title" content={fullTitle} />
 	<meta name="twitter:description" content={desc} />
 	<meta name="twitter:image" content={ogImage} />
