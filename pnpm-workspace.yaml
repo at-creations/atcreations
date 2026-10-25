@@ -8,3 +8,7 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 minimumReleaseAge: 4320
+
+# Lets `pnpm deploy` (Dockerfiles) copy exactly the locked production dependencies instead of
+# re-resolving them. Workspace packages without peer deps stay symlinked in development.
+injectWorkspacePackages: true

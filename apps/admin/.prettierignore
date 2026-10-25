@@ -11,3 +11,8 @@ bun.lockb
 /project.inlang/cache/
 /build/
 /.svelte-kit/
+
+# Written by the Paraglide compiler on a fresh checkout (ignored by project.inlang/.gitignore)
+project.inlang/.lix/
+project.inlang/.meta.json
+project.inlang/README.md
