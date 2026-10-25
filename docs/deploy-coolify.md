@@ -1,6 +1,6 @@
 # Auto-deploy to Coolify
 
-Every push to `main` runs **CI**. When CI passes, **Deploy** (`.github/workflows/deploy.yml`) builds the four images, pushes them to GHCR as `sha-<commit>` with an SBOM and signed provenance, sets `TAG` on the Coolify resource and starts a Coolify deployment, then waits for it to finish. Release tags (`vX.Y.Z`) and a manual run from `main` do the same. Coolify itself never builds: it pulls the images CI built.
+Every push to `main` runs **CI**. When CI passes, **Deploy** (`.github/workflows/deploy.yml`) builds the four images, pushes them to GHCR as `sha-<commit>` with an SBOM and signed provenance, then, over SSH to the Coolify host, sets `TAG` on the Coolify resource, starts a Coolify deployment and waits for it to finish. Release tags (`vX.Y.Z`) and a manual run from `main` do the same. Coolify itself never builds: it pulls the images CI built.
 
 ```
 push to main ─▶ CI (tests, lint, scans, image build) ─▶ Deploy: build + push images ─▶ Coolify: TAG=sha-…, deploy
@@ -38,7 +38,7 @@ Point the storefront, `admin.` and `api.` domains (A/AAAA) at the Coolify server
    | `CLERK_SECRET_KEY`, `PUBLIC_CLERK_PUBLISHABLE_KEY` | the **production** Clerk instance (`sk_live_…`, `pk_live_…`) |
    | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Cloudflare R2 bucket and an API token scoped to it |
    | `CDN_BASE_URL` | the bucket's public domain, for example `https://cdn.atcreations.ca` |
-   | `SENDGRID_API_KEY`, `MAIL_FROM` | SendGrid key and the verified sender (`orders@atcreations.ca`) |
+   | `SENDGRID_API_KEY`, `MAIL_FROM` | SendGrid key and the verified sender (`no-reply@atcreations.ca`) |
 
    Optional, with defaults: `S3_KEY_PREFIX` (`atcreations`: the folder every object goes in, see below), `S3_REGION` (`auto`), `MAIL_PROVIDER`, `MAIL_FROM_NAME`, `STORE_NAME`, `FEATURE_PUBLIC_CHECKOUT` (`false`), `ANALYTICS_TIMEZONE`, `LOG_LEVEL`, `TRUSTED_PROXIES` (see step 6).
 
@@ -46,9 +46,17 @@ Point the storefront, `admin.` and `api.` domains (A/AAAA) at the Coolify server
 
 7. Copy the resource's UUID from its URL (`…/application/<uuid>`). Don't press Deploy yet: there are no images until the workflow builds them.
 
-## 3. Coolify API token
+## 3. Deploy access through the Coolify host
 
-**Keys & Tokens → API Tokens → Create**, named `github-deploy`, with the **write** and **deploy** permissions. It needs `write` to set `TAG` and `deploy` to start the deployment.
+GitHub's runners can't call Coolify's API through Cloudflare (Bot Fight Mode challenges them), so the deploy job SSHes to the **Coolify host** (sr1) and runs one command there, which calls Coolify's API locally.
+
+1. In Coolify: **Keys & Tokens → API Tokens → Create** `github-deploy` with the **write** and **deploy** permissions (`write` sets `TAG`, `deploy` starts the deployment).
+2. On the Coolify host, as root:
+   - a user `ghdeploy` with no password;
+   - `/usr/local/bin/atc-deploy` (`deploy/coolify/atc-deploy.sh`): reads the tag from `SSH_ORIGINAL_COMMAND`, accepts only `sha-<40 hex>`, sets `TAG` through `http://127.0.0.1:8000/api/v1`, starts the deployment (`POST /deploy`), waits for it and exits non-zero on failure. One deploy runs at a time (`flock`);
+   - `/etc/atc-deploy/config` (`COOLIFY_API`, `APP_UUID`) and `/etc/atc-deploy/auth.hdr` (`Authorization: Bearer <token>`, `root:ghdeploy 0640`), so the token never appears on a command line and never leaves the host.
+3. A dedicated ed25519 key for GitHub, in `~ghdeploy/.ssh/authorized_keys` as
+   `restrict,command="/usr/local/bin/atc-deploy" ssh-ed25519 AAAA…`. It can't open a shell or forward ports: any other command is refused.
 
 ## 4. GitHub settings
 
@@ -56,7 +64,7 @@ In `github.com/at-creations/atcreations` → **Settings**:
 
 1. **Environments → New environment `production`**:
    - **Deployment branches and tags:** selected branches and tags, `main` and `v*.*.*`.
-   - **Environment secret** `COOLIFY_TOKEN` = the token from step 3.
+   - **Environment secret** `DEPLOY_SSH_KEY` = the private half of the key from step 3.3.
    - Optional: **Required reviewers** if you want to approve each deploy.
 2. **Secrets and variables → Actions → Variables** (repository variables). The frontends compile these into their Content Security Policy at build time:
 
@@ -67,7 +75,8 @@ In `github.com/at-creations/atcreations` → **Settings**:
    | `CSP_IMG_ORIGINS` | `https://cdn.atcreations.ca` |
    | `PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` |
    | `CSP_CLERK_ORIGINS` | your Clerk Frontend API origin, for example `https://clerk.atcreations.ca` |
-   | `COOLIFY_URL` | `https://coolify.baoopn.com` |
+   | `DEPLOY_HOST` | the Coolify host, `sr1.baoopn.com` (must not be proxied by Cloudflare) |
+   | `DEPLOY_KNOWN_HOSTS` | its pinned host key: `ssh-keyscan -t ed25519 sr1.baoopn.com` |
    | `PRODUCTION_URL` | `https://atcreations.ca` (shown on the deployment) |
    | `COOLIFY_APP_UUID` | the UUID from step 2.7. **Set this last**: it switches the Deploy workflow on |
 
@@ -83,8 +92,8 @@ The new app can use the old site's R2 bucket. Every object it writes (product an
 ## 5. First deploy
 
 1. **Actions → Deploy → Run workflow** on `main`.
-2. When the images are pushed, open **github.com/orgs/at-creations/packages** and check that the four `atcreations-*` packages are **Public**. Packages pushed from a public repository usually are; if one is private, open it → **Package settings → Change visibility → Public**. Otherwise Coolify can't pull it, unless you instead run `docker login ghcr.io` on the server with a token that has `read:packages`.
-3. The workflow sets `TAG`, starts the Coolify deployment and fails the run if Coolify reports a failure. On first boot MongoDB initialises its replica set and creates the `atcreations_app` user before the API starts.
+2. The images are **private** by default. Either make the four `atcreations-*` packages public (org **Settings → Packages** must allow public packages), or log the app server in to GHCR: `docker login ghcr.io -u <github user> --password-stdin` as root, with a **classic** token that has only `read:packages`. Production uses the login.
+3. The workflow runs `atc-deploy sha-<commit>` on the Coolify host and fails if Coolify reports a failure. On first boot MongoDB initialises its replica set and creates the `atcreations_app` user before the API starts. The stack uses MongoDB **8.2**: 8.0 refuses to start on Linux 6.19+ ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)).
 4. In Clerk, set your user's `publicMetadata` to `{"role":"admin"}`, then sign in to the admin dashboard.
 
 From then on, every push to `main` that passes CI is deployed automatically.
