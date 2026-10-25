@@ -19,7 +19,9 @@ Everything — Caddy, storefront, admin, API, MongoDB and Redis — runs on one 
 
 ## Deploys
 
-Push a tag `vX.Y.Z` → `.github/workflows/deploy.yml` builds and pushes images (with an SBOM and signed build provenance) and, after approval in the `production` environment, runs `scripts/deploy.sh sha-<commit>` over SSH. The script pulls every image (api, imgworker, storefront, admin), waits for health checks, and reverts automatically on failure. Manual rollback:
+Production deploys run on Coolify: after CI passes on `main`, `.github/workflows/deploy.yml` builds and pushes the images and deploys `deploy/coolify/docker-compose.yml` there. Setup: [docs/deploy-coolify.md](../docs/deploy-coolify.md).
+
+On a plain Docker host with this directory, roll to an image tag with `scripts/deploy.sh sha-<commit>`. The script pulls every image (api, imgworker, storefront, admin), waits for health checks, and reverts automatically on failure. Manual rollback:
 
 ```bash
 ./scripts/deploy.sh "$(cat .previous-tag)"

@@ -1,11 +1,16 @@
 name: Deploy
 
 # Builds immutable images, pushes them to GHCR with an SBOM and signed build
-# provenance (GitHub artifact attestations, Sigstore), then rolls the production
-# host forward. Verify an image with:
+# provenance (GitHub artifact attestations, Sigstore), then deploys them on Coolify.
+# Verify an image with:
 #   gh attestation verify oci://ghcr.io/<owner>/atcreations-api:sha-<commit> --owner <owner>
-# The "production" environment should be configured with required reviewers in GitHub settings.
+# Runs after CI passes on a push to main, on a release tag, or by hand from main.
+# Setup: docs/deploy-coolify.md.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   push:
     tags: ["v*.*.*"]
   workflow_dispatch:
@@ -19,12 +24,23 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io/${{ github.repository_owner }}
+  # The commit being shipped: CI's commit for workflow_run, otherwise the triggering commit.
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Only release tags, or a manual run from main, may build production images.
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
+    # Only a green CI run for a push to main in this repository (never a fork's PR), a release
+    # tag, or a manual run from main may build production images; and only once deploys are
+    # configured (docs/deploy-coolify.md), so pushes before that don't fail here.
+    if: >-
+      vars.COOLIFY_APP_UUID != '' && (
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_repository.full_name == github.repository)
+      || github.ref_type == 'tag'
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     permissions:
       contents: read
       packages: write
@@ -40,6 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SHA }}
           persist-credentials: false
       - name: Public build settings are set
         # They are compiled into the frontends' CSP; empty values would silently fall back to
@@ -74,9 +91,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/atcreations-${{ matrix.name }}
+          # Explicit sha tag: on workflow_run, github.sha is the default branch head, not CI's commit.
           tags: |
             type=semver,pattern={{version}}
-            type=sha,format=long
+            type=raw,value=sha-${{ env.SHA }}
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -88,7 +106,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Public origins compiled into the frontends' CSP (repository variables, not secrets).
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('sha-{0}', env.SHA) }}
             PUBLIC_API_URL=${{ vars.PUBLIC_API_URL }}
             PUBLIC_ASSET_BASE_URL=${{ vars.PUBLIC_ASSET_BASE_URL }}
             CSP_IMG_ORIGINS=${{ vars.CSP_IMG_ORIGINS }}
@@ -105,26 +123,37 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  # Points the Coolify resource (deploy/coolify/docker-compose.yml) at the new images and
+  # deploys it.
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    env:
+      COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+      APP: ${{ vars.COOLIFY_APP_UUID }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      TAG: sha-${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-      - name: Pin the server host key (no trust-on-first-use)
+      - name: Set the image tag
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-        env:
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-      - name: Roll out
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          TAG: sha-${{ github.sha }}
+          curl -fsS -X PATCH "$COOLIFY_URL/api/v1/applications/$APP/envs" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg tag "$TAG" '{key: "TAG", value: $tag}')" >/dev/null
+      - name: Deploy and wait for the result
         run: |
-          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd /opt/atcreations/deploy && ./scripts/deploy.sh '$TAG'"
+          api() { curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_URL/api/v1/$1"; }
+          id="$(api "deploy?uuid=$APP&force=false" | jq -r '.deployments[0].deployment_uuid')"
+          [ -n "$id" ] && [ "$id" != null ] || { echo "::error::Coolify did not start a deployment"; exit 1; }
+          echo "Deploying $TAG (Coolify deployment $id)"
+          for _ in $(seq 1 90); do
+            status="$(api "deployments/$id" | jq -r '.status')"
+            case "$status" in
+              finished) echo "Deployed $TAG"; exit 0 ;;
+              failed|cancelled*) echo "::error::Coolify deployment $id $status; see its logs in Coolify"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Timed out waiting for Coolify deployment $id"; exit 1
