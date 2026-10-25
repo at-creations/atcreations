@@ -1,0 +1,10 @@
+[Unit]
+Description=Encrypted backup of the AT Creations production MongoDB
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/atc-backup
+Nice=10
+IOSchedulingClass=idle

@@ -101,8 +101,47 @@ From then on, every push to `main` that passes CI is deployed automatically.
 ## 6. After the first deploy
 
 - **Narrow `TRUSTED_PROXIES`.** It defaults to all private ranges. On the server, `docker network inspect <resource-uuid> --format '{{(index .IPAM.Config 0).Subnet}}'` prints the subnet that Coolify's proxy and the storefront share. Set `TRUSTED_PROXIES` to it and redeploy.
-- **Backups.** MongoDB lives in the `mongo_data` volume. Coolify doesn't back up a database defined inside a Compose file, so schedule `mongodump` (Coolify **Scheduled Tasks** on the `mongo` service, or `deploy/scripts/backup.sh` adapted to the container name) and copy the archives off the server.
+- **Backups.** See [Backups](#backups): Coolify doesn't back up a database defined inside a Compose file.
 - **Data.** A new deployment starts with an empty database. Restore a dump (`mongorestore`) or run `apps/api/cmd/migrate` against it to bring the catalogue across.
+
+## Backups
+
+`deploy/coolify/atc-backup.sh` runs daily on the app server (sr2) through `atc-backup.timer` (03:15 America/Vancouver):
+
+1. `mongodump` of the `atcreations` database inside the mongo container (the root password stays in the container: a temporary config file, never a command line);
+2. encrypted with [age](https://age-encryption.org) to a **public** key, so the server can't read its own backups;
+3. kept 14 days in `/var/backups/atcreations` and copied to R2, `<bucket>/atcreations-backups/`, kept 30 days. The bucket is public through the CDN, so the file names carry a random part and the contents are encrypted.
+
+The **private key** (`AGE-SECRET-KEY-…`) is the only way to read a backup. Keep it in a password manager and nowhere on the server.
+
+Setup on the server, as root:
+
+```bash
+apt install age rclone
+install -d -m 0700 /etc/atc-backup
+# /etc/atc-backup/config (0600): APP_UUID=<coolify app uuid>, AGE_RECIPIENT=age1…,
+#   RCLONE_DEST=r2:<bucket>/atcreations-backups, KEEP_LOCAL_DAYS=14, KEEP_REMOTE_DAYS=30
+# /etc/atc-backup/rclone.conf (0600): [r2] type = s3, provider = Cloudflare, access_key_id,
+#   secret_access_key, endpoint = https://<account>.r2.cloudflarestorage.com, no_check_bucket = true
+install -m 0750 deploy/coolify/atc-backup.sh /usr/local/bin/atc-backup
+cp deploy/coolify/atc-backup.service deploy/coolify/atc-backup.timer /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now atc-backup.timer
+systemctl start atc-backup.service && journalctl -u atc-backup.service -n 20   # first run
+```
+
+Check it: `systemctl list-timers atc-backup.timer` and `journalctl -u atc-backup.service`.
+
+**Restore** (on a machine that has the private key):
+
+```bash
+rclone copy r2:<bucket>/atcreations-backups/<file>.archive.gz.age .     # or take it from /var/backups/atcreations
+age -d -i backup-age.key -o restore.archive.gz <file>.archive.gz.age
+# then, with the archive copied into the mongo container:
+mongorestore --config=<file with "password: ..."> -u root --authenticationDatabase admin \
+  --gzip --archive=/tmp/restore.archive.gz --nsInclude='atcreations.*' --drop
+```
+
+Test a restore every few months: download the newest copy from R2, decrypt it and restore it into a throwaway `mongo:8.2` container.
 
 ## Rolling back
 
