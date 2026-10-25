@@ -104,6 +104,8 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          # Without this, SARIF mode reports (and fails on) every severity, not just the ones above.
+          limit-severities-for-sarif: true
           # Code scanning needs a public repo (or GitHub Advanced Security): a private repo on
           # the Free plan gets the findings in the job log instead.
           format: ${{ github.event.repository.private && 'table' || 'sarif' }}
