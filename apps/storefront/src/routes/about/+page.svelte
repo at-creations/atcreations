@@ -1,13 +1,10 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
-	import { assetUrl } from '$lib/urls';
 	import Seo from '$lib/components/Seo.svelte';
 	import AboutIntro from '$lib/components/AboutIntro.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-
-	const asset = (file: string) => assetUrl(data.config.assetBaseUrl, file);
 
 	const values = $derived([
 		{ title: m.about_uniqueness_title(), text: m.about_uniqueness_text() },
