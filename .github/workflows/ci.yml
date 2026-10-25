@@ -83,7 +83,7 @@ jobs:
           PUBLIC_ASSET_BASE_URL: https://cdn.example.com/site
           PUBLIC_STOREFRONT_URL: https://example.com
           PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
-          CLERK_SECRET_KEY: sk_test_placeholder
+          CLERK_SECRET_KEY: sk_test_dev-placeholder
       - run: pnpm audit --prod --audit-level high
 
   security:
