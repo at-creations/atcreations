@@ -16,10 +16,10 @@ ARG PUBLIC_CLERK_PUBLISHABLE_KEY=
 ARG CSP_CLERK_ORIGINS=
 ARG CSP_IMG_ORIGINS=
 ENV PUBLIC_API_URL=${PUBLIC_API_URL} PUBLIC_CLERK_PUBLISHABLE_KEY=${PUBLIC_CLERK_PUBLISHABLE_KEY} CSP_CLERK_ORIGINS=${CSP_CLERK_ORIGINS} CSP_IMG_ORIGINS=${CSP_IMG_ORIGINS}
-RUN pnpm --filter @atcreations/admin build  && pnpm --filter @atcreations/admin deploy --prod --legacy /out
+RUN pnpm --filter @atcreations/admin build  && pnpm --filter @atcreations/admin deploy --prod /out
 
 # ---- runtime: distroless Node, no shell, non-root ----
-FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:10747a1323be68f206aed893599d43e6697ad67257e7c42703553f99fbce3d33
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
 COPY --from=build /out/package.json ./package.json
