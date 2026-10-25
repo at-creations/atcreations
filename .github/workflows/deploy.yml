@@ -123,37 +123,27 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # Points the Coolify resource (deploy/coolify/docker-compose.yml) at the new images and
-  # deploys it.
+  # Deploys the new images on Coolify (deploy/coolify/docker-compose.yml).
   deploy:
     needs: build
     runs-on: ubuntu-latest
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
-    env:
-      COOLIFY_URL: ${{ vars.COOLIFY_URL }}
-      APP: ${{ vars.COOLIFY_APP_UUID }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-      TAG: sha-${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Set the image tag
+      # The Coolify host runs the deploy: this key may only run /usr/local/bin/atc-deploy there
+      # (forced command, no shell or forwarding), which sets TAG through Coolify's local API,
+      # starts the deployment and waits for it. Nothing crosses Cloudflare, and no Coolify token
+      # leaves the host. Setup: docs/deploy-coolify.md.
+      - name: Deploy on Coolify (via the Coolify host)
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          TAG: sha-${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          curl -fsS -X PATCH "$COOLIFY_URL/api/v1/applications/$APP/envs" \
-            -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: application/json" \
-            -d "$(jq -n --arg tag "$TAG" '{key: "TAG", value: $tag}')" >/dev/null
-      - name: Deploy and wait for the result
-        run: |
-          api() { curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_URL/api/v1/$1"; }
-          id="$(api "deploy?uuid=$APP&force=false" | jq -r '.deployments[0].deployment_uuid')"
-          [ -n "$id" ] && [ "$id" != null ] || { echo "::error::Coolify did not start a deployment"; exit 1; }
-          echo "Deploying $TAG (Coolify deployment $id)"
-          for _ in $(seq 1 90); do
-            status="$(api "deployments/$id" | jq -r '.status')"
-            case "$status" in
-              finished) echo "Deployed $TAG"; exit 0 ;;
-              failed|cancelled*) echo "::error::Coolify deployment $id $status; see its logs in Coolify"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "::error::Timed out waiting for Coolify deployment $id"; exit 1
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 "ghdeploy@$DEPLOY_HOST" "$TAG"

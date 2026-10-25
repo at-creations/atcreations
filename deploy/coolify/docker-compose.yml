@@ -163,7 +163,9 @@ services:
     networks: [data]
 
   mongo:
-    image: mongo:8.0@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907
+    # 8.2, not 8.0: MongoDB 8.0 refuses to start on Linux 6.19+ (SERVER-121912), and the
+    # Coolify servers run Ubuntu 26.04 (Linux 7.0). Dev and CI still use 8.0.
+    image: mongo:8.2@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     pids_limit: 1024
