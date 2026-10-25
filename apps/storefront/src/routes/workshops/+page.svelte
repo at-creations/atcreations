@@ -15,7 +15,7 @@
 			id: 'plaster-painting',
 			title: m.plaster_title(),
 			summary: m.plaster_summary(),
-			image: assetUrl(data.config.assetBaseUrl, 'workshop-space.jpg'),
+			image: assetUrl(data.config.assetBaseUrl, 'plaster-models.jpg'),
 			href: localizedPath(data.locale, '/workshops/plaster-painting'),
 			duration: m.workshops_duration(),
 			capacity: m.workshops_capacity()

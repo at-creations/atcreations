@@ -24,15 +24,11 @@
 	const stories = $derived([
 		{
 			title: m.about_journey_title(),
-			text: m.about_journey_text(),
-			image: asset('pottery.jpg'),
-			alt: m.about_crafts_image_alt()
+			text: m.about_journey_text()
 		},
 		{
 			title: m.about_craftsmen_title(),
-			text: m.about_craftsmen_text(),
-			image: asset('wood-craft.jpg'),
-			alt: m.about_craftsman_image_alt()
+			text: m.about_craftsmen_text()
 		}
 	]);
 </script>
@@ -49,16 +45,8 @@
 	<div class="mt-24 grid grid-cols-1 gap-16 lg:grid-cols-2">
 		{#each stories as story (story.title)}
 			<section>
-				<img
-					src={story.image}
-					alt={story.alt}
-					width="1200"
-					height="800"
-					loading="lazy"
-					class="aspect-[3/2] w-full rounded-lg object-cover"
-				/>
-				<h2 class="mt-6 heading-section">{story.title}</h2>
-				<p class="mt-3 max-w-xl leading-relaxed">{story.text}</p>
+				<h2 class="heading-section">{story.title}</h2>
+				<p class="mt-3 max-w-xl text-lg leading-relaxed">{story.text}</p>
 			</section>
 		{/each}
 	</div>

@@ -72,8 +72,8 @@
 <section class="mt-24 bg-mist md:mt-28" aria-labelledby="workshop-title">
 	<div class="container-page grid items-center gap-10 py-16 md:grid-cols-12 md:gap-16 md:py-20">
 		<img
-			src={asset('finished-works.jpg')}
-			alt={m.plaster_img_finished()}
+			src={asset('plaster-models.jpg')}
+			alt={m.plaster_img_models()}
 			width="1536"
 			height="2048"
 			loading="lazy"
@@ -106,12 +106,12 @@
 		</div>
 		<div class="md:col-span-6 lg:col-span-7">
 			<img
-				src={asset('wood-craft.jpg')}
-				alt={m.about_craftsman_image_alt()}
-				width="1200"
-				height="800"
+				src={asset('about_row.jpg')}
+				alt={m.about_image_alt()}
+				width="1276"
+				height="956"
 				loading="lazy"
-				class="aspect-[3/2] w-full rounded-lg object-cover"
+				class="aspect-[4/3] w-full rounded-lg object-cover"
 			/>
 		</div>
 	</div>

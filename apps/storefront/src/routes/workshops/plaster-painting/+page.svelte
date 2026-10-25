@@ -18,10 +18,8 @@
 	const asset = (file: string) => assetUrl(data.config.assetBaseUrl, file);
 
 	const images = $derived([
-		{ url: asset('workshop-space.jpg'), alt: m.plaster_img_space() },
-		{ url: asset('plaster-models.jpg'), alt: m.plaster_img_models() },
-		{ url: asset('finished-works.jpg'), alt: m.plaster_img_finished() },
-		{ url: asset('painting-session.jpg'), alt: m.plaster_img_session() }
+		// Our own photos only (add more as they are taken).
+		{ url: asset('plaster-models.jpg'), alt: m.plaster_img_models() }
 	]);
 	const offerings = $derived([
 		m.plaster_offering_figurines(),
@@ -49,7 +47,7 @@
 <Seo
 	title={m.plaster_title()}
 	description={m.plaster_summary()}
-	image={asset('workshop-space.jpg')}
+	image={asset('plaster-models.jpg')}
 	type="article"
 />
 
@@ -66,7 +64,7 @@
 
 	<div class="grid gap-10 lg:grid-cols-12 lg:gap-14">
 		<div class="lg:col-span-7">
-			<Gallery {images} label={m.plaster_title()} aspect="video" />
+			<Gallery {images} label={m.plaster_title()} />
 		</div>
 		<div class="lg:col-span-5">
 			<h2 class="heading-section">{m.plaster_welcome_heading()}</h2>
