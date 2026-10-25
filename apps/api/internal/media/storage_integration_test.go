@@ -72,6 +72,58 @@ func TestS3StorageAgainstRustFS(t *testing.T) {
 	}
 }
 
+// A KeyPrefix keeps every object under its folder (shared buckets), while callers keep using
+// unprefixed keys for writes, reads, listing and deletes.
+func TestS3StorageKeyPrefix(t *testing.T) {
+	endpoint := os.Getenv("S3_TEST_ENDPOINT")
+	if endpoint == "" {
+		t.Skip("S3_TEST_ENDPOINT not set")
+	}
+	cfg := S3Config{
+		Endpoint: endpoint, Region: "us-east-1", Bucket: "atcreations-dev",
+		AccessKeyID: "atcreations-dev", SecretAccessKey: "dev-rustfs-secret-key",
+		PublicBaseURL: endpoint + "/atcreations-dev",
+	}
+	root := NewS3Storage(cfg)
+	cfg.KeyPrefix = "it-" + NewID()
+	s := NewS3Storage(cfg)
+	ctx := context.Background()
+	key := NewKey("products", "webp")
+
+	if err := s.Put(ctx, key, []byte("prefixed"), "image/webp"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Delete(context.Background(), key) })
+
+	if data, err := s.Get(ctx, key, 1<<20); err != nil || string(data) != "prefixed" {
+		t.Fatalf("Get = %q, %v", data, err)
+	}
+	if _, err := root.Head(ctx, key); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("object must not exist at the bucket root: err = %v", err)
+	}
+	if _, err := root.Head(ctx, cfg.KeyPrefix+"/"+key); err != nil {
+		t.Fatalf("object must exist under the prefix: %v", err)
+	}
+	if got, want := s.URL(key), cfg.PublicBaseURL+"/"+cfg.KeyPrefix+"/"+key; got != want {
+		t.Fatalf("URL = %q, want %q", got, want)
+	}
+
+	var found []string
+	if err := s.Walk(ctx, "products/", func(k string, _ time.Time) error {
+		found = append(found, k)
+		return nil
+	}); err != nil || len(found) != 1 || found[0] != key {
+		t.Fatalf("walk: %v %v", found, err)
+	}
+
+	if err := s.Delete(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Head(ctx, cfg.KeyPrefix+"/"+key); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("object still present after delete: err = %v", err)
+	}
+}
+
 func TestS3StorageGetHeadAndPrivateUploads(t *testing.T) {
 	endpoint := os.Getenv("S3_TEST_ENDPOINT")
 	if endpoint == "" {
