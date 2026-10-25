@@ -57,6 +57,7 @@
 			<div class="flex items-center justify-between p-4">
 				<p class="text-sm" aria-live="polite">
 					{m.gallery_counter({ current: index + 1, total: images.length })}
+					{#if current.caption}<span class="ml-3 text-white/70">{current.caption}</span>{/if}
 				</p>
 				<button
 					type="button"

@@ -17,9 +17,18 @@
 
 	const asset = (file: string) => assetUrl(data.config.assetBaseUrl, file);
 
+	const vietnam = (url: string, alt: string) => ({
+		url,
+		alt: `${alt}: ${m.workshop_vietnam_caption()}`,
+		caption: m.workshop_vietnam_caption()
+	});
 	const images = $derived([
-		// Our own photos only (add more as they are taken).
-		{ url: asset('plaster-models.jpg'), alt: m.plaster_img_models() }
+		{ url: asset('plaster-models.jpg'), alt: m.plaster_img_models() },
+		// Taken at our Bạch Đằng workshop in Vietnam (same owners): captioned so nobody expects
+		// that room on Main Street.
+		vietnam(asset('workshop-space.jpg'), m.plaster_img_space()),
+		vietnam(asset('painting-session.jpg'), m.plaster_img_session()),
+		vietnam(asset('finished-works.jpg'), m.plaster_img_finished())
 	]);
 	const offerings = $derived([
 		m.plaster_offering_figurines(),

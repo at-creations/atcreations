@@ -110,6 +110,9 @@
 		{/if}
 	</div>
 	<div class="shelf [--shelf-gap:0px]" aria-hidden="true"></div>
+	{#if current?.caption}
+		<p class="text-sm text-ink-soft">{current.caption}</p>
+	{/if}
 
 	{#if total > 1}
 		<ul class="flex gap-2 overflow-x-auto pt-2 pb-1">

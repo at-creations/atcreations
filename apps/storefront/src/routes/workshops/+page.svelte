@@ -15,7 +15,8 @@
 			id: 'plaster-painting',
 			title: m.plaster_title(),
 			summary: m.plaster_summary(),
-			image: assetUrl(data.config.assetBaseUrl, 'plaster-models.jpg'),
+			image: assetUrl(data.config.assetBaseUrl, 'workshop-space.jpg'),
+			caption: m.workshop_vietnam_caption(),
 			href: localizedPath(data.locale, '/workshops/plaster-painting'),
 			duration: m.workshops_duration(),
 			capacity: m.workshops_capacity()
@@ -35,11 +36,12 @@
 				<div class="md:col-span-6">
 					<img
 						src={workshop.image}
-						alt=""
+						alt={workshop.caption}
 						loading="lazy"
 						class="aspect-[4/3] w-full rounded-t-lg object-cover"
 					/>
 					<div class="shelf [--shelf-gap:2rem]" aria-hidden="true"></div>
+					<p class="mt-2 text-sm text-ink-soft">{workshop.caption}</p>
 				</div>
 				<div class="md:col-span-6">
 					<h2 class="heading-section md:text-4xl">{workshop.title}</h2>
