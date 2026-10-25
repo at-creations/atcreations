@@ -20,12 +20,12 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
-		"@atcreations/api-types": "workspace:*",
 		"@fontsource-variable/bricolage-grotesque": "5.3.0",
 		"@fontsource/be-vietnam-pro": "5.3.0",
 		"openapi-fetch": "0.17.0"
 	},
 	"devDependencies": {
+		"@atcreations/api-types": "workspace:*",
 		"@eslint/js": "10.0.1",
 		"@inlang/paraglide-js": "2.27.0",
 		"@lucide/svelte": "1.55.0",
