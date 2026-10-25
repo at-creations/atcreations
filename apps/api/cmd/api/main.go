@@ -122,6 +122,7 @@ func run() error {
 	storage := media.NewS3Storage(media.S3Config{
 		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
 		AccessKeyID: cfg.S3AccessKeyID, SecretAccessKey: cfg.S3SecretAccessKey, PublicBaseURL: cfg.CDNBaseURL,
+		KeyPrefix: cfg.S3KeyPrefix,
 	})
 
 	var sender mail.Sender = mail.LogSender{Verbose: cfg.Env == "development" || cfg.Env == "test"}

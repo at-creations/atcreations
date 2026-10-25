@@ -38,6 +38,7 @@ type config struct {
 	S3Bucket          string `env:"S3_BUCKET,required"`
 	S3AccessKeyID     string `env:"S3_ACCESS_KEY_ID,required,unset"`
 	S3SecretAccessKey string `env:"S3_SECRET_ACCESS_KEY,required,unset"`
+	S3KeyPrefix       string `env:"S3_KEY_PREFIX"`
 	CDNBaseURL        string `env:"CDN_BASE_URL"`
 }
 
@@ -73,6 +74,7 @@ func run() error {
 	storage := media.NewS3Storage(media.S3Config{
 		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
 		AccessKeyID: cfg.S3AccessKeyID, SecretAccessKey: cfg.S3SecretAccessKey, PublicBaseURL: cfg.CDNBaseURL,
+		KeyPrefix: cfg.S3KeyPrefix,
 	})
 
 	authUnary, authStream := imageworker.AuthInterceptors(cfg.Token)

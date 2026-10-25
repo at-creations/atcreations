@@ -55,6 +55,9 @@ type ObjectInfo struct {
 
 type S3Config struct {
 	Endpoint, Region, Bucket, AccessKeyID, SecretAccessKey, PublicBaseURL string
+	// KeyPrefix (e.g. "v2/") puts every object under one folder, so this app can share a
+	// bucket with another without overlapping keys. Callers and stored keys never include it.
+	KeyPrefix string
 	// MaxAttempts per S3 call including the first (default 8).
 	MaxAttempts int
 }
@@ -63,6 +66,7 @@ type S3Storage struct {
 	client  *s3.Client
 	bucket  string
 	baseURL string
+	prefix  string
 }
 
 // Throttling responses from S3-compatible stores (R2, MinIO, RustFS) are not always tagged with
@@ -105,8 +109,20 @@ func NewS3Storage(cfg S3Config) *S3Storage {
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 		Retryer:                    newRetryer(cfg.MaxAttempts),
 	})
-	return &S3Storage{client: client, bucket: cfg.Bucket, baseURL: strings.TrimRight(cfg.PublicBaseURL, "/")}
+	return &S3Storage{client: client, bucket: cfg.Bucket, baseURL: strings.TrimRight(cfg.PublicBaseURL, "/"), prefix: NormalizeKeyPrefix(cfg.KeyPrefix)}
 }
+
+// NormalizeKeyPrefix trims slashes and spaces and ends a non-empty prefix with exactly one "/".
+func NormalizeKeyPrefix(p string) string {
+	p = strings.Trim(strings.TrimSpace(p), "/")
+	if p == "" {
+		return ""
+	}
+	return p + "/"
+}
+
+// objectKey is the key in the bucket for a key as the rest of the app knows it.
+func (s *S3Storage) objectKey(key string) string { return s.prefix + key }
 
 func (s *S3Storage) Put(ctx context.Context, key string, data []byte, contentType string) error {
 	return s.PutObject(ctx, PutInput{Key: key, Data: data, ContentType: contentType})
@@ -121,7 +137,7 @@ func (s *S3Storage) PutObject(ctx context.Context, in PutInput) error {
 	}
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:        aws.String(s.bucket),
-		Key:           aws.String(in.Key),
+		Key:           aws.String(s.objectKey(in.Key)),
 		Body:          bytes.NewReader(in.Data),
 		ContentLength: aws.Int64(int64(len(in.Data))),
 		ContentType:   aws.String(in.ContentType),
@@ -135,7 +151,7 @@ func (s *S3Storage) PutObject(ctx context.Context, in PutInput) error {
 }
 
 func (s *S3Storage) Get(ctx context.Context, key string, maxBytes int64) ([]byte, error) {
-	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.objectKey(key))})
 	if err != nil {
 		if isNotFound(err) {
 			return nil, ErrObjectNotFound
@@ -157,7 +173,7 @@ func (s *S3Storage) Get(ctx context.Context, key string, maxBytes int64) ([]byte
 }
 
 func (s *S3Storage) Head(ctx context.Context, key string) (*ObjectInfo, error) {
-	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.objectKey(key))})
 	if err != nil {
 		if isNotFound(err) {
 			return nil, ErrObjectNotFound
@@ -182,7 +198,7 @@ func (s *S3Storage) Delete(ctx context.Context, keys ...string) error {
 		batch := keys[start:min(start+1000, len(keys))]
 		objs := make([]types.ObjectIdentifier, len(batch))
 		for i, k := range batch {
-			objs[i] = types.ObjectIdentifier{Key: aws.String(k)}
+			objs[i] = types.ObjectIdentifier{Key: aws.String(s.objectKey(k))}
 		}
 		_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(s.bucket),
@@ -196,14 +212,14 @@ func (s *S3Storage) Delete(ctx context.Context, keys ...string) error {
 }
 
 func (s *S3Storage) Walk(ctx context.Context, prefix string, fn func(string, time.Time) error) error {
-	p := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(prefix)})
+	p := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(s.objectKey(prefix))})
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
 		if err != nil {
 			return fmt.Errorf("list objects: %w", err)
 		}
 		for _, o := range page.Contents {
-			if err := fn(aws.ToString(o.Key), aws.ToTime(o.LastModified)); err != nil {
+			if err := fn(strings.TrimPrefix(aws.ToString(o.Key), s.prefix), aws.ToTime(o.LastModified)); err != nil {
 				return err
 			}
 		}
@@ -211,7 +227,7 @@ func (s *S3Storage) Walk(ctx context.Context, prefix string, fn func(string, tim
 	return nil
 }
 
-func (s *S3Storage) URL(key string) string { return s.baseURL + "/" + key }
+func (s *S3Storage) URL(key string) string { return s.baseURL + "/" + s.objectKey(key) }
 
 // NewKey returns an unguessable object key under prefix. Keys never contain
 // user-supplied filenames, which rules out path traversal and overwrites.

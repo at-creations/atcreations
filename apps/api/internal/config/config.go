@@ -51,6 +51,8 @@ type Config struct {
 	S3Bucket          string `env:"S3_BUCKET,required"`
 	S3AccessKeyID     string `env:"S3_ACCESS_KEY_ID,required,unset"`
 	S3SecretAccessKey string `env:"S3_SECRET_ACCESS_KEY,required,unset"`
+	// Folder for every object in the bucket (e.g. "v2/"), to share a bucket without overlap.
+	S3KeyPrefix string `env:"S3_KEY_PREFIX"`
 	// Public base URL serving bucket objects, e.g. https://cdn.atcreations.ca
 	CDNBaseURL string `env:"CDN_BASE_URL,required"`
 
