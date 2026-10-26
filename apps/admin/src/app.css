@@ -151,3 +151,52 @@ dialog::backdrop {
 	background: rgb(15 23 42 / 0.45);
 	backdrop-filter: blur(2px);
 }
+
+/* Clerk sign-in / sign-up widgets: borders, focus rings and control heights matching the
+   admin's own `input` and buttons. Clerk draws borders as a 1px box-shadow ring and its
+   styles win over `appearance.elements` for these properties, hence `!important`. */
+/* Controls sit flush with (even 1px past) Clerk's frame, which clips overflow: the outline
+   and the focus ring were cut off at the sides. The auth pages draw no frame of their own
+   around the widget, so nothing needs clipping. */
+.cl-cardBox,
+.cl-card {
+	overflow: visible !important;
+}
+.cl-formFieldInput,
+.cl-otpCodeFieldInput,
+.cl-socialButtonsBlockButton,
+.cl-identityPreview {
+	box-shadow: 0 0 0 1px var(--color-zinc-300) !important;
+}
+.cl-formFieldInput:hover,
+.cl-socialButtonsBlockButton:hover {
+	box-shadow: 0 0 0 1px var(--color-zinc-400) !important;
+}
+.cl-socialButtonsBlockButton:hover {
+	background-color: var(--color-zinc-50);
+}
+.cl-formFieldInput:focus,
+.cl-otpCodeFieldInput:focus,
+.cl-socialButtonsBlockButton:focus-visible {
+	outline: none;
+	box-shadow:
+		0 0 0 1px var(--color-brand-400),
+		0 0 0 4px rgb(222 218 255 / 0.7) !important;
+}
+.cl-formFieldInput[aria-invalid='true'] {
+	box-shadow:
+		0 0 0 1px var(--color-red-500),
+		0 0 0 4px rgb(239 68 68 / 0.15) !important;
+}
+.cl-formFieldInput,
+.cl-socialButtonsBlockButton,
+.cl-formButtonPrimary {
+	min-height: 2.75rem !important;
+}
+.cl-formButtonPrimary {
+	box-shadow: none !important;
+}
+.cl-formButtonPrimary:focus-visible {
+	outline: 2px solid var(--color-brand-400);
+	outline-offset: 2px;
+}

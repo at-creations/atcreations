@@ -9,7 +9,8 @@
 	const redirectTo = $derived(safeRedirectPath(page.url.searchParams.get('redirect_url')));
 </script>
 
-<AuthShell title={m.signin_title()}>
+<AuthShell title={m.signin_title()} subtitle={m.signin_subtitle()}>
 	<!-- Sign-up is intentionally not offered: staff are invited by administrators. -->
 	<SignIn path="/sign-in" routing="path" forceRedirectUrl={redirectTo} withSignUp={false} />
+	{#snippet footer()}{m.auth_need_access()}{/snippet}
 </AuthShell>
