@@ -155,7 +155,8 @@ services:
       - -c
       - |
         install -m 0400 -o 999 -g 999 /run/secrets/mongo_keyfile /data/configdb/keyfile
-        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile --wiredTigerCacheSizeGB 0.5
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile \
+          --wiredTigerCacheSizeGB 0.25 --setParameter diagnosticDataCollectionEnabled=false
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongo_root_password
@@ -180,7 +181,10 @@ services:
       timeout: 10s
       retries: 12
       start_period: 30s
-    mem_limit: 1g
+    # Small working set (the catalogue is a few MB): 0.25 GB WiredTiger cache, no FTDC
+    # diagnostic capture. The limit leaves the cache about as much again for connections
+    # and internal overhead.
+    mem_limit: 512m
     cpus: 1.5
     logging:
       driver: json-file
