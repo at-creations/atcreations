@@ -56,8 +56,10 @@ type Config struct {
 	// Public base URL serving bucket objects, e.g. https://cdn.atcreations.ca
 	CDNBaseURL string `env:"CDN_BASE_URL,required"`
 
-	MailProvider  string `env:"MAIL_PROVIDER" envDefault:"log"` // log | sendgrid
+	MailProvider  string `env:"MAIL_PROVIDER" envDefault:"log"` // log | sendgrid | usesend
 	SendGridKey   string `env:"SENDGRID_API_KEY,unset"`
+	UseSendURL    string `env:"USESEND_URL"` // base URL of the useSend instance
+	UseSendKey    string `env:"USESEND_API_KEY,unset"`
 	MailFrom      string `env:"MAIL_FROM" envDefault:"orders@atcreations.ca"`
 	MailFromName  string `env:"MAIL_FROM_NAME" envDefault:"AT Creations"`
 	StoreName     string `env:"STORE_NAME" envDefault:"AT Creations"`
@@ -174,8 +176,15 @@ func (c *Config) validate() error {
 		if c.SendGridKey == "" {
 			errs = append(errs, errors.New("SENDGRID_API_KEY is required when MAIL_PROVIDER=sendgrid"))
 		}
+	case "usesend":
+		if c.UseSendKey == "" {
+			errs = append(errs, errors.New("USESEND_API_KEY is required when MAIL_PROVIDER=usesend"))
+		}
+		if u, err := url.Parse(c.UseSendURL); err != nil || u.Host == "" || (u.Scheme != "https" && (c.IsProduction() || u.Scheme != "http")) {
+			errs = append(errs, errors.New("USESEND_URL must be the useSend instance's absolute URL (https in production)"))
+		}
 	default:
-		errs = append(errs, fmt.Errorf("MAIL_PROVIDER must be log|sendgrid, got %q", c.MailProvider))
+		errs = append(errs, fmt.Errorf("MAIL_PROVIDER must be log|sendgrid|usesend, got %q", c.MailProvider))
 	}
 
 	for name, raw := range map[string]string{"CDN_BASE_URL": c.CDNBaseURL, "S3_ENDPOINT": c.S3Endpoint, "STOREFRONT_URL": c.StorefrontURL} {

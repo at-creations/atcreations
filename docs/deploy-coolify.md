@@ -38,7 +38,7 @@ Point the storefront, `admin.` and `api.` domains (A/AAAA) at the Coolify server
    | `CLERK_SECRET_KEY`, `PUBLIC_CLERK_PUBLISHABLE_KEY` | the **production** Clerk instance (`sk_live_…`, `pk_live_…`) |
    | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Cloudflare R2 bucket and an API token scoped to it |
    | `CDN_BASE_URL` | the bucket's public domain, for example `https://cdn.atcreations.ca` |
-   | `SENDGRID_API_KEY`, `MAIL_FROM` | SendGrid key and the verified sender (`no-reply@atcreations.ca`) |
+   | `USESEND_URL`, `USESEND_API_KEY`, `MAIL_FROM` | the self-hosted useSend instance, an API key, and a sender on a domain verified there (`no-reply@atcreations.ca`). For SendGrid instead: `MAIL_PROVIDER=sendgrid` and `SENDGRID_API_KEY` |
 
    Optional, with defaults: `S3_KEY_PREFIX` (`atcreations`: the folder every object goes in, see below), `S3_REGION` (`auto`), `MAIL_PROVIDER`, `MAIL_FROM_NAME`, `STORE_NAME`, `FEATURE_PUBLIC_CHECKOUT` (`false`), `ANALYTICS_TIMEZONE`, `LOG_LEVEL`, `TRUSTED_PROXIES` (see step 6).
 

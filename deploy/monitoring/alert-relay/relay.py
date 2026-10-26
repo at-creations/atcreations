@@ -2,11 +2,15 @@
 
 errex (https://github.com/TheHoltz/errex) only alerts through Slack-style webhooks. This
 service receives that webhook on a secret path and sends one email per alert through
-SendGrid. It is reachable only on the monitoring stack's private Docker network.
+useSend (self-hosted) or SendGrid. It is reachable only on the monitoring stack's private
+Docker network.
 
 Environment:
   RELAY_TOKEN       secret path segment: errex posts to http://alert-relay:8080/hook/<token>
-  SENDGRID_API_KEY  SendGrid key allowed to send mail
+  MAIL_PROVIDER     usesend (default) | sendgrid
+  USESEND_URL       useSend base URL, e.g. https://usesend.example.com   (usesend)
+  USESEND_API_KEY   useSend API key                                       (usesend)
+  SENDGRID_API_KEY  SendGrid key allowed to send mail                     (sendgrid)
   MAIL_FROM         verified sender, e.g. no-reply@atcreations.ca
   MAIL_TO           recipient(s), comma separated
   PORT              listen port (default 8080)
@@ -73,10 +77,48 @@ def build_email(payload: dict) -> tuple[str, str, str]:
     return subject, text, body
 
 
+def provider() -> str:
+    return os.environ.get("MAIL_PROVIDER", "usesend").strip().lower()
+
+
+def recipients() -> list[str]:
+    return [a.strip() for a in os.environ["MAIL_TO"].split(",") if a.strip()]
+
+
+def post_json(url: str, token: str, message: dict, service: str) -> None:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(message).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (configured https URL)
+        if resp.status >= 300:
+            raise RuntimeError(f"{service} returned {resp.status}")
+
+
 def send_mail(subject: str, text: str, body: str) -> None:
-    recipients = [a.strip() for a in os.environ["MAIL_TO"].split(",") if a.strip()]
+    if provider() == "sendgrid":
+        send_sendgrid(subject, text, body)
+    else:
+        send_usesend(subject, text, body)
+
+
+def send_usesend(subject: str, text: str, body: str) -> None:
     message = {
-        "personalizations": [{"to": [{"email": a} for a in recipients]}],
+        "to": recipients(),
+        "from": f"errex alerts <{os.environ['MAIL_FROM']}>",
+        "subject": subject,
+        "text": text,
+        "html": body,
+    }
+    url = os.environ["USESEND_URL"].rstrip("/") + "/api/v1/emails"
+    post_json(url, os.environ["USESEND_API_KEY"], message, "useSend")
+
+
+def send_sendgrid(subject: str, text: str, body: str) -> None:
+    message = {
+        "personalizations": [{"to": [{"email": a} for a in recipients()]}],
         "from": {"email": os.environ["MAIL_FROM"], "name": "errex alerts"},
         "subject": subject,
         "content": [
@@ -89,18 +131,7 @@ def send_mail(subject: str, text: str, body: str) -> None:
             "open_tracking": {"enable": False},
         },
     }
-    req = urllib.request.Request(
-        SENDGRID_URL,
-        data=json.dumps(message).encode(),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {os.environ['SENDGRID_API_KEY']}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (fixed https URL)
-        if resp.status >= 300:
-            raise RuntimeError(f"SendGrid returned {resp.status}")
+    post_json(SENDGRID_URL, os.environ["SENDGRID_API_KEY"], message, "SendGrid")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -156,7 +187,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    for name in ("RELAY_TOKEN", "SENDGRID_API_KEY", "MAIL_FROM", "MAIL_TO"):
+    required = {
+        "usesend": ("USESEND_URL", "USESEND_API_KEY"),
+        "sendgrid": ("SENDGRID_API_KEY",),
+    }
+    if provider() not in required:
+        sys.exit("MAIL_PROVIDER must be usesend or sendgrid")
+    for name in ("RELAY_TOKEN", "MAIL_FROM", "MAIL_TO", *required[provider()]):
         if not os.environ.get(name):
             sys.exit(f"{name} is required")
     if len(os.environ["RELAY_TOKEN"]) < 24:

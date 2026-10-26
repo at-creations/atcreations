@@ -87,3 +87,51 @@ func (s *SendGrid) Send(ctx context.Context, m Message) error {
 	}
 	return nil
 }
+
+// UseSend sends via a (self-hosted) useSend instance's HTTP API (POST /api/v1/emails).
+type UseSend struct {
+	endpoint, apiKey, from string
+	client                 *http.Client
+}
+
+// NewUseSend takes the instance's base URL (e.g. https://usesend.example.com) and an API key.
+func NewUseSend(baseURL, apiKey, from, fromName string) *UseSend {
+	if fromName != "" {
+		from = fmt.Sprintf("%s <%s>", fromName, from)
+	}
+	return &UseSend{
+		endpoint: strings.TrimRight(baseURL, "/") + "/api/v1/emails",
+		apiKey:   apiKey,
+		from:     from,
+		client:   &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (s *UseSend) Send(ctx context.Context, m Message) error {
+	buf, err := json.Marshal(map[string]any{
+		"to":      []string{m.To},
+		"from":    s.from,
+		"subject": m.Subject,
+		"html":    m.HTML,
+		"text":    m.Text,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("usesend request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("usesend status %d: %s", resp.StatusCode, snippet)
+	}
+	return nil
+}
