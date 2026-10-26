@@ -14,17 +14,17 @@ not the app server, so errors are still reported if the app server is down).
 
 ## Setup
 
-1. **DNS** (zone `baoopn.com`): `A errex → 162.250.191.124`, **DNS only**. Proxied through
+1. **DNS** (zone `baoopn.dev`): `A errex → 162.250.191.124`, **DNS only**. Proxied through
    Cloudflare, Bot Fight Mode would challenge the API's server-side reports.
 2. **Coolify:** AT Creations → production → + New → Public Repository
    `https://github.com/at-creations/atcreations`, branch `main`, server **localhost** (sr1),
    Build Pack **Docker Compose**, location `/deploy/monitoring/docker-compose.yml`. Auto Deploy off.
-   - Domain for **errex**: `https://errex.baoopn.com:9090`; none for alert-relay.
-   - Environment: `ERREX_DOMAIN=errex.baoopn.com`, `SENDGRID_API_KEY`, `MAIL_FROM` (a verified
+   - Domain for **errex**: `https://errex.baoopn.dev:9090`; none for alert-relay.
+   - Environment: `ERREX_DOMAIN=errex.baoopn.dev`, `SENDGRID_API_KEY`, `MAIL_FROM` (a verified
      SendGrid sender, e.g. `no-reply@atcreations.ca`), `MAIL_TO` (comma separated).
    - Deploy. Coolify generates `SERVICE_PASSWORD_64_ERREXADMIN` (setup token) and
      `SERVICE_PASSWORD_64_RELAY` (the relay's secret path).
-3. **Admin account:** open `https://errex.baoopn.com/setup`, paste the setup token, create your user.
+3. **Admin account:** open `https://errex.baoopn.dev/setup`, paste the setup token, create your user.
 4. **Projects and alerts** (in the errex container, Coolify → errex → Terminal):
 
    ```bash
