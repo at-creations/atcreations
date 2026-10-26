@@ -49,8 +49,11 @@ services:
       # Every object lives under this folder, so the bucket can be shared with the old site.
       S3_KEY_PREFIX: ${S3_KEY_PREFIX:-atcreations}
       CDN_BASE_URL: ${CDN_BASE_URL:?}
-      MAIL_PROVIDER: ${MAIL_PROVIDER:-sendgrid}
-      SENDGRID_API_KEY: ${SENDGRID_API_KEY:?}
+      # usesend (self-hosted useSend) or sendgrid; the API refuses to start without the matching key.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-usesend}
+      USESEND_URL: ${USESEND_URL:-}
+      USESEND_API_KEY: ${USESEND_API_KEY:-}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:?}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-AT Creations}
       STORE_NAME: ${STORE_NAME:-AT Creations}

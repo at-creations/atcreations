@@ -126,8 +126,11 @@ func run() error {
 	})
 
 	var sender mail.Sender = mail.LogSender{Verbose: cfg.Env == "development" || cfg.Env == "test"}
-	if cfg.MailProvider == "sendgrid" {
+	switch cfg.MailProvider {
+	case "sendgrid":
 		sender = mail.NewSendGrid(cfg.SendGridKey, cfg.MailFrom, cfg.MailFromName)
+	case "usesend":
+		sender = mail.NewUseSend(cfg.UseSendURL, cfg.UseSendKey, cfg.MailFrom, cfg.MailFromName)
 	}
 
 	auditLog := audit.New(db)

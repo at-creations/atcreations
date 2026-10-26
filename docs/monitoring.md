@@ -3,10 +3,10 @@
 [errex](https://github.com/TheHoltz/errex) collects errors from the API, storefront and admin. It
 speaks Sentry's protocol, so the apps use the official Sentry SDKs pointed at errex. When an error is
 **new**, or a resolved one **comes back**, errex calls a webhook; `alert-relay` turns that into an
-email through SendGrid.
+email through the self-hosted useSend (or SendGrid).
 
 ```
-API / storefront / admin ─(Sentry SDK)─▶ errex ─(webhook, private network)─▶ alert-relay ─▶ SendGrid ─▶ email
+API / storefront / admin ─(Sentry SDK)─▶ errex ─(webhook, private network)─▶ alert-relay ─▶ useSend ─▶ email
 ```
 
 The stack is `deploy/monitoring/docker-compose.yml`, deployed by Coolify on sr1 (the Coolify host,
@@ -18,10 +18,13 @@ not the app server, so errors are still reported if the app server is down).
    Cloudflare, Bot Fight Mode would challenge the API's server-side reports.
 2. **Coolify:** AT Creations → production → + New → Public Repository
    `https://github.com/at-creations/atcreations`, branch `main`, server **localhost** (sr1),
-   Build Pack **Docker Compose**, location `/deploy/monitoring/docker-compose.yml`. Auto Deploy off.
+   Build Pack **Docker Compose**, **Base Directory `/deploy/monitoring`**, Docker Compose Location
+   `/docker-compose.yml` (the relay is built from `./alert-relay`, relative to the base directory).
+   Auto Deploy off.
    - Domain for **errex**: `https://errex.baoopn.dev:9090`; none for alert-relay.
-   - Environment: `ERREX_DOMAIN=errex.baoopn.dev`, `SENDGRID_API_KEY`, `MAIL_FROM` (a verified
-     SendGrid sender, e.g. `no-reply@atcreations.ca`), `MAIL_TO` (comma separated).
+   - Environment: `ERREX_DOMAIN=errex.baoopn.dev`, `USESEND_URL`, `USESEND_API_KEY`, `MAIL_FROM`
+     (on a domain verified in useSend, e.g. `no-reply@atcreations.ca`), `MAIL_TO` (comma separated).
+     For SendGrid instead: `MAIL_PROVIDER=sendgrid` and `SENDGRID_API_KEY`.
    - Deploy. Coolify generates `SERVICE_PASSWORD_64_ERREXADMIN` (setup token) and
      `SERVICE_PASSWORD_64_RELAY` (the relay's secret path).
 3. **Admin account:** open `https://errex.baoopn.dev/setup`, paste the setup token, create your user.

@@ -2,7 +2,7 @@
 # Location" = /deploy/monitoring/docker-compose.yml). See docs/monitoring.md.
 #  - errex: Sentry-compatible error tracker (Rust + SQLite). Give it a domain in Coolify
 #    (https://<ERREX_DOMAIN>:9090), DNS only, so server-side SDKs aren't challenged by Cloudflare.
-#  - alert-relay: turns errex's Slack-style webhooks into emails via SendGrid. No domain: errex
+#  - alert-relay: turns errex's Slack-style webhooks into emails (useSend or SendGrid). No domain: errex
 #    reaches it on this stack's network at http://alert-relay:8080/hook/<SERVICE_PASSWORD_64_RELAY>.
 
 x-hardening: &hardening
@@ -39,7 +39,10 @@ services:
     build: ./alert-relay
     environment:
       RELAY_TOKEN: ${SERVICE_PASSWORD_64_RELAY}
-      SENDGRID_API_KEY: ${SENDGRID_API_KEY:?}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-usesend}
+      USESEND_URL: ${USESEND_URL:-}
+      USESEND_API_KEY: ${USESEND_API_KEY:-}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:?}
       MAIL_TO: ${MAIL_TO:?}
     read_only: true

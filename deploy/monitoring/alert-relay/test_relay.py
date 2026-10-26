@@ -48,6 +48,46 @@ class BuildEmail(unittest.TestCase):
         self.assertEqual(subject, "errex alert")
 
 
+class Providers(unittest.TestCase):
+    def capture(self, env):
+        sent = {}
+
+        class Resp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout):
+            sent["url"], sent["auth"] = req.full_url, req.get_header("Authorization")
+            sent["body"] = json.loads(req.data)
+            return Resp()
+
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(
+            relay.urllib.request, "urlopen", fake_urlopen
+        ):
+            relay.send_mail("Subject", "text", "<p>html</p>")
+        return sent
+
+    def test_usesend_is_the_default(self):
+        sent = self.capture({"USESEND_URL": "https://us.example.com/", "USESEND_API_KEY": "us_k",
+                             "MAIL_FROM": "a@b.c", "MAIL_TO": "d@e.f, g@h.i"})
+        self.assertEqual(sent["url"], "https://us.example.com/api/v1/emails")
+        self.assertEqual(sent["auth"], "Bearer us_k")
+        self.assertEqual(sent["body"]["to"], ["d@e.f", "g@h.i"])
+        self.assertEqual(sent["body"]["from"], "errex alerts <a@b.c>")
+        self.assertEqual((sent["body"]["text"], sent["body"]["html"]), ("text", "<p>html</p>"))
+
+    def test_sendgrid(self):
+        sent = self.capture({"MAIL_PROVIDER": "sendgrid", "SENDGRID_API_KEY": "SG.k",
+                             "MAIL_FROM": "a@b.c", "MAIL_TO": "d@e.f"})
+        self.assertEqual(sent["url"], relay.SENDGRID_URL)
+        self.assertEqual(sent["body"]["personalizations"][0]["to"], [{"email": "d@e.f"}])
+
+
 class Server(unittest.TestCase):
     TOKEN = "t" * 32
 

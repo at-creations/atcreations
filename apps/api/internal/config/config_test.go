@@ -26,6 +26,15 @@ func TestValidateAcceptsSaneProduction(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsUseSend(t *testing.T) {
+	c := base()
+	c.MailProvider, c.SendGridKey = "usesend", ""
+	c.UseSendKey, c.UseSendURL = "us_x", "https://usesend.example.com"
+	if err := c.validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateRejectsUnsafeSettings(t *testing.T) {
 	mutations := map[string]func(*Config){
 		"wildcard CORS":       func(c *Config) { c.CORSPublicOrigins = []string{"*"} },
@@ -42,6 +51,14 @@ func TestValidateRejectsUnsafeSettings(t *testing.T) {
 		"unknown environment": func(c *Config) { c.Env = "prod" },
 		"no redis in prod":    func(c *Config) { c.RedisURL = "" },
 		"bad redis scheme":    func(c *Config) { c.RedisURL = "http://redis:6379" },
+		"usesend without key": func(c *Config) {
+			c.MailProvider, c.UseSendURL = "usesend", "https://usesend.example.com"
+		},
+		"usesend without url": func(c *Config) { c.MailProvider, c.UseSendKey = "usesend", "us_x" },
+		"usesend http in prod": func(c *Config) {
+			c.MailProvider, c.UseSendKey, c.UseSendURL = "usesend", "us_x", "http://usesend.example.com"
+		},
+		"unknown mail provider": func(c *Config) { c.MailProvider = "smtp" },
 	}
 	for name, mutate := range mutations {
 		c := base()
