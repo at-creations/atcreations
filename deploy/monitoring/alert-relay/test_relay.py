@@ -63,6 +63,7 @@ class Providers(unittest.TestCase):
 
         def fake_urlopen(req, timeout):
             sent["url"], sent["auth"] = req.full_url, req.get_header("Authorization")
+            sent["ua"] = req.get_header("User-agent")
             sent["body"] = json.loads(req.data)
             return Resp()
 
@@ -77,6 +78,7 @@ class Providers(unittest.TestCase):
                              "MAIL_FROM": "a@b.c", "MAIL_TO": "d@e.f, g@h.i"})
         self.assertEqual(sent["url"], "https://us.example.com/api/v1/emails")
         self.assertEqual(sent["auth"], "Bearer us_k")
+        self.assertEqual(sent["ua"], relay.USER_AGENT)
         self.assertEqual(sent["body"]["to"], ["d@e.f", "g@h.i"])
         self.assertEqual(sent["body"]["from"], "errex alerts <a@b.c>")
         self.assertEqual((sent["body"]["text"], sent["body"]["html"]), ("text", "<p>html</p>"))

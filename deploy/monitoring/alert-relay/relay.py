@@ -29,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BODY = 64 * 1024
 SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send"
+USER_AGENT = "atcreations-alert-relay/1.0"
 
 log = logging.getLogger("alert-relay")
 
@@ -90,7 +91,13 @@ def post_json(url: str, token: str, message: dict, service: str) -> None:
         url,
         data=json.dumps(message).encode(),
         method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            # Cloudflare's Browser Integrity Check blocks urllib's default User-Agent (error 1010)
+            # in front of a proxied useSend.
+            "User-Agent": USER_AGENT,
+        },
     )
     with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (configured https URL)
         if resp.status >= 300:
