@@ -1,0 +1,50 @@
+# Error monitoring for AT Creations on Coolify (Docker Compose build pack, "Docker Compose
+# Location" = /deploy/monitoring/docker-compose.yml). See docs/monitoring.md.
+#  - errex: Sentry-compatible error tracker (Rust + SQLite). Give it a domain in Coolify
+#    (https://<ERREX_DOMAIN>:9090), DNS only, so server-side SDKs aren't challenged by Cloudflare.
+#  - alert-relay: turns errex's Slack-style webhooks into emails via SendGrid. No domain: errex
+#    reaches it on this stack's network at http://alert-relay:8080/hook/<SERVICE_PASSWORD_64_RELAY>.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  errex:
+    <<: *hardening
+    # No version tags upstream: pinned to the image digest of `latest` when this was added.
+    image: ghcr.io/theholtz/errex@sha256:adc34f22e89a811c76b5379ebf701bd003a380a8477af70e1175a37a28b79d28
+    environment:
+      ERREX_HOST: 0.0.0.0
+      ERREX_PORT: "9090"
+      ERREX_PUBLIC_URL: https://${ERREX_DOMAIN:?}
+      # Setup-wizard token for creating the first admin user (/setup).
+      ERREX_ADMIN_TOKEN: ${SERVICE_PASSWORD_64_ERREXADMIN}
+      # Ingest needs the project's key (it's in each DSN).
+      ERREX_REQUIRE_AUTH: "true"
+      ERREX_RETENTION_DAYS: "30"
+      ERREX_RATE_LIMIT_PER_MIN: "600"
+      ERREX_LOG_LEVEL: info
+    volumes:
+      - errex_data:/data
+    mem_limit: 256m
+    cpus: 0.5
+
+  alert-relay:
+    <<: *hardening
+    build: ./alert-relay
+    environment:
+      RELAY_TOKEN: ${SERVICE_PASSWORD_64_RELAY}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:?}
+      MAIL_FROM: ${MAIL_FROM:?}
+      MAIL_TO: ${MAIL_TO:?}
+    read_only: true
+    mem_limit: 64m
+    cpus: 0.25
+
+volumes:
+  errex_data:
