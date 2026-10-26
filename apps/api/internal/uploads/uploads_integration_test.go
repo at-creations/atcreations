@@ -223,8 +223,12 @@ func TestTransientFailureIsRetried(t *testing.T) {
 	}
 	store.FailPuts = 1
 	svc.Wake()
-	waitFor(t, "image attached after a retry", func() bool { return len(product().Images) == 1 })
-	if j := jobStatus(t, svc, job.ID); j.Status != StatusDone || j.Attempts < 2 {
+	// The image is attached before the job is marked done (separate writes): wait for both,
+	// or a slow runner can read the job between them.
+	waitFor(t, "image attached and job done after a retry", func() bool {
+		return len(product().Images) == 1 && jobStatus(t, svc, job.ID).Status == StatusDone
+	})
+	if j := jobStatus(t, svc, job.ID); j.Attempts < 2 {
 		t.Fatalf("job = %s after %d attempts, want done after a retry", j.Status, j.Attempts)
 	}
 }
