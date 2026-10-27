@@ -92,7 +92,8 @@
 	);
 </script>
 
-<Seo title={m.search_title()} description={m.search_meta_description()} noindex={hasFilters} />
+<!-- Result pages are thin, near-duplicate listings: kept out of the index, links still followed. -->
+<Seo title={m.search_title()} description={m.search_meta_description()} noindex />
 
 <div class="container-page pt-28 pb-20">
 	<SectionTitle level={1} title={m.search_title()} />

@@ -7,7 +7,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath, t } from '$lib/i18n';
 	import { productsHref } from '$lib/urls';
-	import { truncate } from '$lib/seo';
+	import { productJsonLd } from '$lib/structured-data';
 	import Seo from '$lib/components/Seo.svelte';
 	import JsonLd from '$lib/components/JsonLd.svelte';
 	import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
@@ -34,31 +34,10 @@
 		}))
 	);
 
-	const jsonLd = $derived.by(() => {
-		const url = `${data.config.siteUrl}${localizedPath(locale, `/products/${product.slug}`)}`;
-		const ld: Record<string, unknown> = {
-			'@context': 'https://schema.org',
-			'@type': 'Product',
-			name,
-			description: truncate(description, 5000),
-			sku: product.id,
-			url,
-			image: product.images.map((i) => i.url),
-			brand: { '@type': 'Brand', name: 'AT Creations' }
-		};
-		if (product.categories[0]) ld.category = t(product.categories[0].name, locale);
-		if (product.finalPriceCents !== null) {
-			ld.offers = {
-				'@type': 'Offer',
-				url,
-				priceCurrency: product.currency,
-				price: (product.finalPriceCents / 100).toFixed(2),
-				availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-				itemCondition: 'https://schema.org/NewCondition'
-			};
-		}
-		return ld;
-	});
+	const jsonLd = $derived(
+		productJsonLd({ siteUrl: data.config.siteUrl, locale, product, brand: m.site_name() })
+	);
+	const category = $derived(product.categories[0]);
 
 	// Fire-and-forget view counter, once per product shown (also on client-side navigation
 	// between products). Errors (network, 404, 429) are deliberately ignored.
@@ -93,6 +72,14 @@
 		items={[
 			{ label: m.nav_home(), href: localizedPath(locale) },
 			{ label: m.nav_products(), href: productsHref(locale) },
+			...(category
+				? [
+						{
+							label: t(category.name, locale),
+							href: productsHref(locale, { category: category.slug })
+						}
+					]
+				: []),
 			{ label: name }
 		]}
 	/>

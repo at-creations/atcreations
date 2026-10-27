@@ -1,7 +1,9 @@
+import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { CATALOGUE_CACHE_CONTROL, listCategories, listProducts } from '$lib/server/api';
 import { currentLocale } from '$lib/locale';
 import {
+	pageWithinListingLimit,
 	parsePage,
 	parsePriceRange,
 	parseQuery,
@@ -26,6 +28,8 @@ export const load: PageServerLoad = async ({ url, setHeaders }) => {
 		price: parsePriceRange(params.get('price')),
 		page: parsePage(params.get('page'))
 	};
+
+	if (!pageWithinListingLimit(state.page, PAGE_SIZE)) error(404, 'Not found');
 
 	const [categories, results] = await Promise.all([
 		listCategories(),

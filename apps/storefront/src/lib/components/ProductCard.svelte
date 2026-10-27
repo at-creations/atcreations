@@ -29,7 +29,7 @@
 				src={cover.url}
 				srcset={srcset(cover)}
 				sizes={GRID_SIZES}
-				alt=""
+				alt={t(cover.alt, locale) || name}
 				width={cover.width}
 				height={cover.height}
 				loading={eager ? 'eager' : 'lazy'}
