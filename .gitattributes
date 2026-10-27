@@ -3,3 +3,6 @@
 *.jpg binary
 *.webp binary
 *.ico binary
+
+# Agent tooling: keep it out of GitHub's language stats.
+.claude/** linguist-vendored
