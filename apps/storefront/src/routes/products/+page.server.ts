@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { CATALOGUE_CACHE_CONTROL, listCategories, listProducts } from '$lib/server/api';
 import { currentLocale } from '$lib/locale';
-import { parsePage } from '$lib/search';
+import { pageWithinListingLimit, parsePage } from '$lib/search';
 import { isSlug } from '$lib/urls';
 
 const PAGE_SIZE = 24;
@@ -13,6 +13,7 @@ export const load: PageServerLoad = async ({ url, setHeaders }) => {
 	if (rawCategory !== null && rawCategory !== '' && !isSlug(rawCategory)) error(404, 'Not found');
 	const category = rawCategory || null;
 	const page = parsePage(url.searchParams.get('page'));
+	if (!pageWithinListingLimit(page, PAGE_SIZE)) error(404, 'Not found');
 
 	const [categories, products] = await Promise.all([
 		listCategories(),

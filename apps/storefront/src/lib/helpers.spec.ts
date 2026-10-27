@@ -3,7 +3,14 @@ import { localizedPath, stripLocale, switchLocaleHref, t } from './i18n';
 import { formatMoney } from './format';
 import { isDiscounted, isNewProduct, savingsCents } from './product';
 import { assetUrl, isSlug, productHref, productsHref } from './urls';
-import { parsePage, parsePriceRange, parseQuery, parseSort, searchStateToParams } from './search';
+import {
+	pageWithinListingLimit,
+	parsePage,
+	parsePriceRange,
+	parseQuery,
+	parseSort,
+	searchStateToParams
+} from './search';
 import { serializeJsonLd, truncate } from './seo';
 import { directionsUrl, mapEmbedUrl } from './maps';
 
@@ -152,5 +159,12 @@ describe('maps', () => {
 		expect(directionsUrl('4305 Main St')).toBe(
 			'https://www.google.com/maps/dir/?api=1&destination=4305+Main+St'
 		);
+	});
+});
+
+describe('pageWithinListingLimit()', () => {
+	it('matches the API row limit', () => {
+		expect(pageWithinListingLimit(416, 24)).toBe(true);
+		expect(pageWithinListingLimit(417, 24)).toBe(false);
 	});
 });

@@ -21,6 +21,14 @@ export const PRICE_RANGE_KEYS = Object.keys(PRICE_RANGES) as PriceRange[];
 export const MAX_PAGE = 10_000;
 export const MAX_QUERY_LENGTH = 100;
 
+/** The API lists at most this many rows deep (`page * pageSize`), and rejects deeper pages. */
+export const MAX_LISTING_ROWS = 10_000;
+
+/** False for pages the API would reject as too deep (they can only be past the end). */
+export function pageWithinListingLimit(page: number, pageSize: number): boolean {
+	return page * pageSize <= MAX_LISTING_ROWS;
+}
+
 /** Parse a `page` query value: integer ≥ 1 (clamped), defaulting to 1. */
 export function parsePage(value: string | null | undefined): number {
 	if (!value || !/^\d{1,6}$/.test(value)) return 1;
