@@ -5,7 +5,9 @@
 	import { m } from '$lib/paraglide/messages';
 	import { localizedPath, t } from '$lib/i18n';
 	import { assetUrl, productsHref } from '$lib/urls';
+	import { storeJsonLd, websiteJsonLd } from '$lib/structured-data';
 	import Seo from '$lib/components/Seo.svelte';
+	import JsonLd from '$lib/components/JsonLd.svelte';
 	import Hero from '$lib/components/Hero.svelte';
 	import SectionTitle from '$lib/components/SectionTitle.svelte';
 	import ProductCard from '$lib/components/ProductCard.svelte';
@@ -14,9 +16,25 @@
 	let { data }: PageProps = $props();
 	const locale = $derived(data.locale);
 	const asset = (file: string) => assetUrl(data.config.assetBaseUrl, file);
+
+	const jsonLd = $derived({
+		'@context': 'https://schema.org',
+		'@graph': [
+			storeJsonLd({
+				siteUrl: data.config.siteUrl,
+				assetBaseUrl: data.config.assetBaseUrl,
+				locale,
+				name: m.site_name(),
+				description: m.site_description(),
+				storeInfo: data.storeInfo
+			}),
+			websiteJsonLd({ siteUrl: data.config.siteUrl, locale, name: m.site_name() })
+		]
+	});
 </script>
 
 <Seo title={m.home_meta_title()} rawTitle description={m.site_description()} />
+<JsonLd data={jsonLd} />
 
 <Hero {locale} assetBaseUrl={data.config.assetBaseUrl} storeInfo={data.storeInfo} />
 

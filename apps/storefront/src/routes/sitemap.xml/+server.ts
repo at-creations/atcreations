@@ -4,10 +4,10 @@ import { listCategories, listProducts } from '$lib/server/api';
 import { config } from '$lib/server/env';
 import { LOCALES, localizedPath } from '$lib/i18n';
 
+// /search is left out: its pages are noindex.
 const STATIC_PATHS = [
 	'/',
 	'/products',
-	'/search',
 	'/workshops',
 	'/workshops/plaster-painting',
 	'/about',
@@ -37,8 +37,8 @@ async function allProducts(): Promise<PublicProduct[]> {
 	return products;
 }
 
-/** One <url> per locale, each listing every language version (incl. x-default). */
-function entry(siteUrl: string, path: string, lastmod?: string): string {
+/** One <url> per locale, each listing every language version (incl. x-default) and its images. */
+function entry(siteUrl: string, path: string, lastmod?: string, images: string[] = []): string {
 	const alternates = [
 		...LOCALES.map(
 			(l) =>
@@ -46,11 +46,14 @@ function entry(siteUrl: string, path: string, lastmod?: string): string {
 		),
 		`<xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(siteUrl + localizedPath('en', path))}"/>`
 	].join('');
+	const imageTags = images
+		.map((url) => `<image:image><image:loc>${escapeXml(url)}</image:loc></image:image>`)
+		.join('');
 	return LOCALES.map(
 		(l) =>
 			`<url><loc>${escapeXml(siteUrl + localizedPath(l, path))}</loc>${
 				lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : ''
-			}${alternates}</url>`
+			}${alternates}${imageTags}</url>`
 	).join('\n');
 }
 
@@ -61,13 +64,25 @@ export const GET: RequestHandler = async () => {
 	const urls = [
 		...STATIC_PATHS.map((p) => entry(siteUrl, p)),
 		...categories.map((c) =>
-			entry(siteUrl, `/products?category=${encodeURIComponent(c.slug)}`, c.updatedAt)
+			entry(
+				siteUrl,
+				`/products?category=${encodeURIComponent(c.slug)}`,
+				c.updatedAt,
+				c.image ? [c.image.url] : []
+			)
 		),
-		...products.map((p) => entry(siteUrl, `/products/${encodeURIComponent(p.slug)}`, p.updatedAt))
+		...products.map((p) =>
+			entry(
+				siteUrl,
+				`/products/${encodeURIComponent(p.slug)}`,
+				p.updatedAt,
+				p.images.map((i) => i.url)
+			)
+		)
 	];
 
 	const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 ${urls.join('\n')}
 </urlset>`;
 

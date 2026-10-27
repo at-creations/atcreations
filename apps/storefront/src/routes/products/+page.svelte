@@ -18,6 +18,20 @@
 	const selectedName = $derived(selected ? t(selected.name, locale) : '');
 	const selectedDescription = $derived(selected ? t(selected.description, locale) : '');
 
+	const heading = $derived(selected ? selectedName : m.products_title());
+	const baseTitle = $derived(
+		selected ? m.products_category_meta_title({ category: selectedName }) : m.products_title()
+	);
+	const title = $derived(
+		data.page > 1 ? `${baseTitle} – ${m.pagination_page({ page: data.page })}` : baseTitle
+	);
+	const description = $derived(
+		selectedDescription ||
+			(selected
+				? m.products_category_meta_description({ category: selectedName })
+				: m.products_meta_description())
+	);
+
 	// Canonical keeps the category and page (each is a distinct, indexable listing).
 	const canonicalQuery = $derived(
 		withQuery('', { category: selected?.slug, page: data.page > 1 ? data.page : undefined })
@@ -25,22 +39,23 @@
 </script>
 
 <Seo
-	title={selected ? m.products_category_meta_title({ category: selectedName }) : m.products_title()}
-	description={selectedDescription || m.products_meta_description()}
+	{title}
+	{description}
 	image={selected?.image?.url}
+	imageAlt={selected ? selectedName : undefined}
+	imageWidth={selected?.image?.width}
+	imageHeight={selected?.image?.height}
 	query={canonicalQuery}
+	noindex={data.products.length === 0}
 />
 
 <div class="container-page pt-28 pb-20">
-	<SectionTitle level={1} title={m.products_title()} />
+	<SectionTitle level={1} title={heading} />
 
 	<CategoryPills categories={data.categories} selected={selected?.slug ?? null} {locale} />
 
-	{#if selected}
-		<section
-			class="mt-10 flex max-w-3xl flex-col gap-5 sm:flex-row sm:items-center"
-			aria-labelledby="category-title"
-		>
+	{#if selected && (selected.image || selectedDescription)}
+		<div class="mt-10 flex max-w-3xl flex-col gap-5 sm:flex-row sm:items-center">
 			{#if selected.image}
 				<img
 					src={sized(selected.image, 256)}
@@ -50,13 +65,10 @@
 					class="size-24 shrink-0 rounded-lg object-cover"
 				/>
 			{/if}
-			<div>
-				<h2 id="category-title" class="heading-section">{selectedName}</h2>
-				{#if selectedDescription}
-					<p class="mt-2 whitespace-pre-line text-ink-soft">{selectedDescription}</p>
-				{/if}
-			</div>
-		</section>
+			{#if selectedDescription}
+				<p class="whitespace-pre-line text-ink-soft">{selectedDescription}</p>
+			{/if}
+		</div>
 	{/if}
 
 	<p class="mt-10 mb-8 text-sm text-ink-soft" aria-live="polite">

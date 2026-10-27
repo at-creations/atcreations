@@ -27,6 +27,8 @@ export const load: PageServerLoad = async ({ url, setHeaders }) => {
 
 	const selectedCategory = category ? categories.find((c) => c.slug === category) : undefined;
 	if (category && !selectedCategory) error(404, 'Not found');
+	// A page past the end is not a real listing (and would be an indexable empty page).
+	if (page > 1 && page > products.meta.totalPages) error(404, 'Not found');
 
 	setHeaders({ 'cache-control': CATALOGUE_CACHE_CONTROL });
 	return {
