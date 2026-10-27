@@ -34,46 +34,107 @@ USER_AGENT = "atcreations-alert-relay/1.0"
 log = logging.getLogger("alert-relay")
 
 
+# errex sends "danger" for new issues and "warning" for regressions: (accent, badge background).
+ACCENTS = {
+    "danger": ("#c0262d", "#fdecec"),
+    "warning": ("#a65a00", "#fdf1e1"),
+    "good": ("#1d7a46", "#e6f4ec"),
+}
+NEUTRAL = ("#52525b", "#f1f1f3")
+SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace"
+
+
 def build_email(payload: dict) -> tuple[str, str, str]:
     """Subject, plain-text and HTML bodies from errex's Slack-compatible payload."""
     att = (payload.get("attachments") or [{}])[0]
-    subject = str(payload.get("text") or att.get("fallback") or "errex alert")[:200]
-    title = str(att.get("title") or subject)
+    headline = str(payload.get("text") or att.get("fallback") or "errex alert")
+    title = str(att.get("title") or headline)
+    # The headline is "<kind>: <issue title>"; the kind becomes the badge.
+    kind = headline[: -len(title)].rstrip(": ") if headline.endswith(title) else ""
     link = str(att.get("title_link") or "")
-    fields = [
-        (str(f.get("title", "")), str(f.get("value", "")))
+    fields = {
+        str(f.get("title", "")): str(f.get("value", ""))
         for f in att.get("fields") or []
         if isinstance(f, dict)
-    ]
+    }
+    project = fields.pop("Project", "")
+    culprit = fields.pop("Culprit", "")
     ts = att.get("ts")
-    when = (
-        datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        if isinstance(ts, (int, float))
-        else ""
-    )
+    if isinstance(ts, (int, float)):
+        fields["Last seen"] = datetime.fromtimestamp(ts, timezone.utc).strftime("%b %d, %H:%M UTC")
+    subject = (f"[{project}] " if project else "") + headline
+    subject = subject[:200]
 
-    lines = [subject, "", title, ""]
-    lines += [f"{k}: {v}" for k, v in fields]
-    if when:
-        lines.append(f"Last seen: {when}")
+    lines = [headline, ""]
+    if project:
+        lines.append(f"Project: {project}")
+    if culprit:
+        lines.append(f"Culprit: {culprit}")
+    lines += [f"{k}: {v}" for k, v in fields.items()]
     if link:
         lines += ["", f"Open in errex: {link}"]
     text = "\n".join(lines)
 
-    rows = "".join(
-        f'<tr><td style="padding:2px 12px 2px 0;color:#71717a">{html.escape(k)}</td>'
-        f"<td>{html.escape(v)}</td></tr>"
-        for k, v in fields + ([("Last seen", when)] if when else [])
+    accent, tint = ACCENTS.get(str(att.get("color") or ""), NEUTRAL)
+    e = html.escape
+    badge = (
+        f'<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:{tint};'
+        f'color:{accent};font-size:12px;font-weight:600">{e(kind)}</span>'
+        if kind
+        else ""
+    )
+    project_label = (
+        f'<span style="color:#71717a;font-size:13px;padding-left:8px">{e(project)}</span>'
+        if project
+        else ""
+    )
+    culprit_block = (
+        f'<p style="margin:10px 0 0;font-family:{MONO};font-size:13px;color:#52525b;'
+        f'word-break:break-word">{e(culprit)}</p>'
+        if culprit
+        else ""
+    )
+    stats = "".join(
+        f'<td style="padding:0 24px 0 0;vertical-align:top">'
+        f'<div style="font-size:12px;color:#71717a;padding-bottom:2px">{e(k)}</div>'
+        f'<div style="font-size:15px;font-weight:600;color:#18181b">{e(v)}</div></td>'
+        for k, v in fields.items()
+    )
+    stats_block = (
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0 0">'
+        f"<tr>{stats}</tr></table>"
+        if stats
+        else ""
     )
     button = (
-        f'<p><a href="{html.escape(link, quote=True)}" style="color:#5a4fb0">Open in errex</a></p>'
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 0"><tr>'
+        f'<td style="border-radius:6px;background:#18181b">'
+        f'<a href="{e(link, quote=True)}" style="display:inline-block;padding:10px 18px;'
+        f'color:#ffffff;font-size:14px;font-weight:600;text-decoration:none">Open in errex</a>'
+        "</td></tr></table>"
         if link
         else ""
     )
+    preheader = e(" / ".join(x for x in (project, culprit) if x))
     body = (
-        '<div style="font-family:system-ui,sans-serif;font-size:14px;color:#18181b">'
-        f'<p style="font-size:16px;font-weight:600;margin:0 0 8px">{html.escape(title)}</p>'
-        f'<table style="border-collapse:collapse;margin:0 0 12px">{rows}</table>{button}</div>'
+        f'<div style="display:none;max-height:0;overflow:hidden">{preheader}</div>'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="background:#f4f4f5;font-family:{SANS};color:#18181b"><tr>'
+        '<td align="center" style="padding:32px 16px">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="max-width:560px;background:#ffffff;border:1px solid #e4e4e7;border-radius:10px">'
+        f'<tr><td style="height:4px;background:{accent};border-radius:10px 10px 0 0;'
+        'font-size:0;line-height:0">&nbsp;</td></tr>'
+        '<tr><td style="padding:24px 28px 28px">'
+        f'<div>{badge}{project_label}</div>'
+        f'<h1 style="margin:16px 0 0;font-family:{MONO};font-size:17px;line-height:1.45;'
+        f'font-weight:600;color:#18181b;word-break:break-word">{e(title)}</h1>'
+        f"{culprit_block}{stats_block}{button}"
+        "</td></tr></table>"
+        '<p style="margin:16px 0 0;font-size:12px;color:#a1a1aa">'
+        "Sent by errex because this address is on the alert list.</p>"
+        "</td></tr></table>"
     )
     return subject, text, body
 

@@ -33,10 +33,20 @@ PAYLOAD = {
 class BuildEmail(unittest.TestCase):
     def test_subject_body_and_link(self):
         subject, text, body = relay.build_email(PAYLOAD)
-        self.assertEqual(subject, "New issue: TypeError: x is undefined")
+        self.assertEqual(subject, "[storefront] New issue: TypeError: x is undefined")
         self.assertIn("Project: storefront", text)
         self.assertIn("Open in errex: https://errex.example.com/issues/42", text)
         self.assertIn('href="https://errex.example.com/issues/42"', body)
+
+    def test_badge_shows_kind_in_its_color(self):
+        _, _, body = relay.build_email(PAYLOAD)
+        self.assertIn(">New issue</span>", body)
+        self.assertIn(relay.ACCENTS["danger"][0], body)
+        regression = {**PAYLOAD, "text": "Regression: TypeError: x is undefined",
+                      "attachments": [{**PAYLOAD["attachments"][0], "color": "warning"}]}
+        _, _, body = relay.build_email(regression)
+        self.assertIn(">Regression</span>", body)
+        self.assertIn(relay.ACCENTS["warning"][0], body)
 
     def test_html_is_escaped(self):
         _, _, body = relay.build_email(PAYLOAD)
